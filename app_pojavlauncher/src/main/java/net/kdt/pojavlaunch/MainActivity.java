@@ -317,6 +317,13 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     }
 
     private void loadControls() {
+        // Wildermyth is played with the handheld's pad and touch-as-mouse; Minecraft's buttons only get in the way.
+        // Load nothing rather than replacing a default layout: its joystick posts work that crashes once detached.
+        if (getIntent().getBooleanExtra(WildermythLauncher.EXTRA, false)) {
+            mControlLayout.loadLayout(new CustomControls());
+            mDrawerPullButton.setVisibility(View.GONE);
+            return;
+        }
         try {
             // Load keys
             mControlLayout.loadLayout(
