@@ -1,0 +1,102 @@
+package net.kdt.pojavlaunch;
+
+import android.content.Context;
+import android.content.res.ColorStateList;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.StateListDrawable;
+import android.util.TypedValue;
+import android.widget.Button;
+
+import java.io.File;
+
+/**
+ * The setup screen's look, taken from the user's own install (logo, menu buttons, vignette, Alegreya) so it
+ * matches the game. None of that art ships in the APK; before the game is installed a plain look stands in.
+ */
+final class WildermythTheme {
+    static final int BG = Color.rgb(21, 16, 12);
+    static final int TEXT = Color.rgb(240, 226, 200);
+    static final int ACCENT = Color.rgb(222, 158, 74);
+
+    private final Context ctx;
+    final Typeface font, fontBold;
+    final Bitmap logo, vignette;
+    private final Bitmap buttonUp, buttonOver, buttonDown;
+
+    WildermythTheme(Context ctx, File game) {
+        this.ctx = ctx;
+        File a = new File(game, "assets");
+        font = typeface(new File(a, "fonts/Alegreya-Regular.ttf"), Typeface.SERIF);
+        fontBold = typeface(new File(a, "fonts/Alegreya-Bold.ttf"), Typeface.create(Typeface.SERIF, Typeface.BOLD));
+        logo = bitmap(new File(a, "menu/logoWildermyth_dark.png"));
+        vignette = bitmap(new File(a, "menu/edgeModal.png"));
+        File ui = new File(a, "ui/scaleUI/unpacked");
+        buttonUp = bitmap(new File(ui, "buttonMainMenu_512x120_up.png"));
+        buttonOver = bitmap(new File(ui, "buttonMainMenu_512x120_over.png"));
+        buttonDown = bitmap(new File(ui, "buttonMainMenu_512x120_down.png"));
+    }
+
+    /** A menu button like the game's: parchment art when available, lighter when focused by the pad. */
+    void style(Button b) {
+        b.setAllCaps(false);
+        b.setTypeface(fontBold);
+        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
+        b.setTextColor(new ColorStateList(new int[][]{{android.R.attr.state_focused}, {}}, new int[]{Color.WHITE, TEXT}));
+        StateListDrawable d = new StateListDrawable();
+        d.addState(new int[]{android.R.attr.state_pressed}, face(buttonDown, 0xFF5A3B22, ACCENT));
+        d.addState(new int[]{android.R.attr.state_focused}, focused(face(buttonOver, 0xFF6E4A2A, ACCENT)));
+        d.addState(new int[]{}, face(buttonUp, 0xFF3A281A, 0xFF7A5A3A));
+        b.setBackground(d);
+        b.setStateListAnimator(null);
+        b.setPadding(dp(32), dp(10), dp(32), dp(10));
+        // The game's "over" art barely differs from "up"; on a pad the focus must be obvious.
+        b.setOnFocusChangeListener((v, has) -> v.animate().scaleX(has ? 1.06f : 1f).scaleY(has ? 1.06f : 1f).setDuration(120).start());
+    }
+
+    private Drawable focused(Drawable face) {
+        GradientDrawable ring = new GradientDrawable();
+        ring.setColor(Color.TRANSPARENT);
+        ring.setCornerRadius(dp(8));
+        ring.setStroke(dp(3), ACCENT);
+        return new android.graphics.drawable.LayerDrawable(new Drawable[]{face, ring});
+    }
+
+    /** Rounded panel behind the QR code, which needs a light, quiet border to scan reliably. */
+    Drawable card() {
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(Color.WHITE);
+        g.setCornerRadius(dp(12));
+        return g;
+    }
+
+    int dp(int v) {
+        return Math.round(v * ctx.getResources().getDisplayMetrics().density);
+    }
+
+    private Drawable face(Bitmap art, int fill, int border) {
+        if (art != null) return new BitmapDrawable(ctx.getResources(), art);
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(fill);
+        g.setCornerRadius(dp(6));
+        g.setStroke(dp(2), border);
+        return g;
+    }
+
+    private static Typeface typeface(File f, Typeface fallback) {
+        try {
+            return f.isFile() ? Typeface.createFromFile(f) : fallback;
+        } catch (RuntimeException e) {
+            return fallback;
+        }
+    }
+
+    private static Bitmap bitmap(File f) {
+        return f.isFile() ? BitmapFactory.decodeFile(f.getPath()) : null;
+    }
+}

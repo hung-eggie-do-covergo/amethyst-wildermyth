@@ -10,7 +10,11 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
+import android.content.res.ColorStateList;
 import android.widget.Button;
+import android.widget.FrameLayout;
+import android.widget.ProgressBar;
+import android.widget.ScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -39,14 +43,18 @@ public class WildermythActivity extends AppCompatActivity {
     private static final String PREF_SESSION = "wm_session_active";
     /** Debug: fetch one small file from Steam into the cache and report, touching nothing else. */
     static final String EXTRA_TEST_DOWNLOAD = "wm_test_download";
+    /** Debug: draw the screen with sample content only, to check the look. */
+    static final String EXTRA_PREVIEW = "wm_preview";
     private boolean testing;
 
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private SharedPreferences prefs;
-    private TextView status;
+    private TextView status, footer;
     private ImageView qr;
+    private ProgressBar progress;
     private LinearLayout buttons;
     private File game;
+    private WildermythTheme theme;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -56,23 +64,9 @@ public class WildermythActivity extends AppCompatActivity {
         game = WildermythLauncher.gameDir(this);
         WmCloud.configure(new File(getFilesDir(), "wmcloud"), line -> runOnUiThread(() -> status.setText(line)));
 
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.CENTER);
-        root.setBackgroundColor(Color.rgb(28, 22, 18));
-        root.setPadding(48, 48, 48, 48);
-        TextView title = text("Wildermyth", 34);
-        status = text("", 18);
-        qr = new ImageView(this);
-        qr.setVisibility(View.GONE);
-        buttons = new LinearLayout(this);
-        buttons.setGravity(Gravity.CENTER);
-        root.addView(title);
-        root.addView(status);
-        root.addView(qr, new LinearLayout.LayoutParams(560, 560));
-        root.addView(buttons);
-        setContentView(root);
+        buildUi();
         if (getIntent().getBooleanExtra(EXTRA_TEST_DOWNLOAD, false)) { testDownload(); return; }
+        if (getIntent().getBooleanExtra(EXTRA_PREVIEW, false)) { testing = true; preview(); return; }
         if (!prefs.getBoolean(PREF_SESSION, false)) next();
     }
 
@@ -84,8 +78,77 @@ public class WildermythActivity extends AppCompatActivity {
         if (prefs.getBoolean(PREF_SESSION, false) && !gameRunning()) afterSession();
     }
 
+    /** Lays the screen out in the game's style; rebuilt once game files (and so the art) arrive. */
+    private void buildUi() {
+        theme = new WildermythTheme(this, game);
+        FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(WildermythTheme.BG);
+        if (theme.vignette != null) {
+            ImageView v = new ImageView(this);
+            v.setScaleType(ImageView.ScaleType.FIT_XY);
+            v.setImageBitmap(theme.vignette);
+            root.addView(v, new FrameLayout.LayoutParams(-1, -1));
+        }
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setGravity(Gravity.CENTER_HORIZONTAL);
+        col.setPadding(theme.dp(24), theme.dp(20), theme.dp(24), theme.dp(20));
+        if (theme.logo != null) {
+            ImageView logo = new ImageView(this);
+            logo.setImageBitmap(theme.logo);
+            logo.setAdjustViewBounds(true);
+            col.addView(logo, new LinearLayout.LayoutParams(theme.dp(420), -2));
+        } else {
+            TextView t = text("Wildermyth", 44);
+            t.setTypeface(theme.fontBold);
+            col.addView(t);
+        }
+        status = text("", 20);
+        status.setMaxWidth(theme.dp(620));
+        col.addView(status);
+        progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        progress.setMax(1000);
+        progress.setProgressTintList(ColorStateList.valueOf(WildermythTheme.ACCENT));
+        progress.setVisibility(View.GONE);
+        col.addView(progress, new LinearLayout.LayoutParams(theme.dp(460), theme.dp(10)));
+        qr = new ImageView(this);
+        qr.setBackground(theme.card());
+        qr.setPadding(theme.dp(10), theme.dp(10), theme.dp(10), theme.dp(10));
+        qr.setVisibility(View.GONE);
+        col.addView(qr, new LinearLayout.LayoutParams(theme.dp(230), theme.dp(230)));
+        buttons = new LinearLayout(this);
+        buttons.setOrientation(LinearLayout.VERTICAL);
+        buttons.setGravity(Gravity.CENTER_HORIZONTAL);
+        buttons.setPadding(0, theme.dp(12), 0, 0);
+        col.addView(buttons);
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        FrameLayout center = new FrameLayout(this);
+        center.addView(col, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
+        scroll.addView(center);
+        root.addView(scroll, new FrameLayout.LayoutParams(-1, -1));
+        footer = text("", 13);
+        footer.setAlpha(0.6f);
+        root.addView(footer, new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL));
+        setContentView(root);
+        updateFooter();
+    }
+
+    private void updateFooter() {
+        String account = WmCloud.accountName();
+        footer.setText(account == null ? "Not signed in to Steam" : "Signed in to Steam as " + account);
+    }
+
+    /** Determinate progress, 0..100; negative hides the bar. */
+    private void progress(float pct) {
+        progress.setVisibility(pct < 0 ? View.GONE : View.VISIBLE);
+        if (pct >= 0) progress.setProgress(Math.round(pct * 10));
+    }
+
     /** Walks the setup steps in order; each one calls back here when done. */
     private void next() {
+        if (theme == null || (theme.logo == null && new File(game, "assets").isDirectory())) buildUi();
+        updateFooter();
         if (!new File(game, "wildermyth.jar").isFile()) showInstall();
         else if (!WmCloud.isLoggedIn()) showLogin();
         else syncAndPlay();
@@ -134,7 +197,8 @@ public class WildermythActivity extends AppCompatActivity {
                 for (int n; (n = in.read(buf)) > 0; ) { o.write(buf, 0, n); copied[0] += n; }
             }
             long mb = copied[0] >> 20;
-            runOnUiThread(() -> status.setText("Copying game files… " + mb + " MB"));
+            // ~2.7 GB for a full install; good enough for a bar, the MB count is exact.
+            runOnUiThread(() -> { status.setText("Copying game files… " + mb + " MB"); progress(Math.min(99f, mb / 27f)); });
         }
     }
 
@@ -142,6 +206,11 @@ public class WildermythActivity extends AppCompatActivity {
         File[] kids = f.listFiles();
         if (kids != null) for (File k : kids) deleteTree(k);
         f.delete();
+    }
+
+    private void preview() {
+        show("Saves and achievements are synced with Steam.", "Play", () -> {}, "Close", this::finish);
+        progress(62);
     }
 
     private void testDownload() {
@@ -168,8 +237,10 @@ public class WildermythActivity extends AppCompatActivity {
         worker.execute(() -> {
             try {
                 File tmp = new File(game.getPath() + ".partial");
-                WmCloud.downloadGame(tmp, pct -> runOnUiThread(() -> status.setText(
-                        String.format(java.util.Locale.ROOT, "Downloading Wildermyth from Steam… %.0f%%", pct))));
+                WmCloud.downloadGame(tmp, pct -> runOnUiThread(() -> {
+                    status.setText(String.format(java.util.Locale.ROOT, "Downloading Wildermyth from Steam… %.0f%%", pct));
+                    progress(pct);
+                }));
                 deleteTree(game);
                 if (!tmp.renameTo(game)) throw new IllegalStateException("could not move files into place");
                 runOnUiThread(this::next);
@@ -332,6 +403,7 @@ public class WildermythActivity extends AppCompatActivity {
     private void show(String message) {
         status.setText(message);
         buttons.removeAllViews();
+        progress(-1);
     }
 
     private void show(String message, String label, Runnable action) {
@@ -348,16 +420,21 @@ public class WildermythActivity extends AppCompatActivity {
     private void addButton(String label, Runnable action) {
         Button b = new Button(this);
         b.setText(label);
+        theme.style(b);
         b.setOnClickListener(v -> action.run());
-        buttons.addView(b);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(theme.dp(340), theme.dp(64));
+        lp.topMargin = theme.dp(8);
+        buttons.addView(b, lp);
     }
 
     private TextView text(String s, int sp) {
         TextView t = new TextView(this);
         t.setText(s);
         t.setTextSize(sp);
-        t.setTextColor(Color.rgb(240, 225, 200));
+        t.setTextColor(WildermythTheme.TEXT);
+        if (theme != null) t.setTypeface(theme.font);
         t.setGravity(Gravity.CENTER);
+        t.setLineSpacing(0, 1.15f);
         t.setPadding(0, 16, 0, 16);
         return t;
     }
