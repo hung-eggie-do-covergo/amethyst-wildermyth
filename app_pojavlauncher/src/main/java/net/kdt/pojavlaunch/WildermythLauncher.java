@@ -63,7 +63,8 @@ public final class WildermythLauncher {
         Tools.sLwjglVersion = LWJGL;
         Tools.lwjglNativesDir = String.format("%s/lwjgl-%s-natives/%s", Tools.DIR_DATA, LWJGL, archAsStringAndroid(getDeviceArchitecture()));
 
-        // Android LWJGL first, then the game jar, whose manifest Class-Path brings in the rest of lib/.
+        // Android LWJGL first, then our FMOD loader (shadowing the game's), then the game jar, whose
+        // manifest Class-Path brings in the rest of lib/.
         StringBuilder cp = new StringBuilder();
         File lwjglDir = new File(Tools.DIR_GAME_HOME, "lwjgl3/" + LWJGL);
         cp.append(new File(lwjglDir, "lwjgl.jar")).append(':');
@@ -71,6 +72,7 @@ public final class WildermythLauncher {
         File[] modules = lwjglDir.listFiles((d, n) -> n.endsWith(".jar") && !n.equals("lwjgl.jar")
                 && !n.contains("merged-modules") && !n.endsWith("lwjglx.jar"));
         if (modules != null) for (File m : modules) cp.append(m).append(':');
+        cp.append(new File(Tools.DIR_DATA, "wildermyth/wm-fmodloader.jar")).append(':');
         cp.append(jar);
 
         List<String> args = new ArrayList<>();
@@ -87,6 +89,10 @@ public final class WildermythLauncher {
         Os.setenv("SDL_JOYSTICK_HIDAPI", "0", true);
         // SDL needs its Android JNI side before the game touches it. Amethyst normally does this from a
         // hook on SDL_InitSubSystem, but Jamepad goes through sdl2-compat, which calls SDL3 directly.
+        // FMOD on Android must be loaded and initialised by the app's own VM before the game uses it.
+        System.loadLibrary("fmod");
+        System.loadLibrary("fmodstudio");
+        org.fmod.FMOD.init(activity);
         CallbackBridge.notifyLauncher(CallbackBridge.NOTIF_TYPE_SDL, CallbackBridge.ACTION_INIT_LAUNCHER_INTEGRATION);
         Tools.SDL.initializeControllerSubsystems();
         JREUtils.launchJavaVM(activity, runtime, game, args, "");
