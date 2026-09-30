@@ -251,7 +251,10 @@ dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar', '*.aar'])
     implementation(project(':wmcloud')) {
         exclude group: 'com.google.code.gson' // the app already ships gson 2.8.6 as a jar
+        exclude group: 'com.github.luben'     // desktop zstd jar; the Android AAR below replaces it
+        exclude group: 'org.tukaani'          // the app already has xz
     }
+    implementation 'com.github.luben:zstd-jni:1.5.7-6@aar' // Steam depot chunks are zstd-compressed
 
     implementation "net.java.dev.jna:jna:5.14.0@aar"
 

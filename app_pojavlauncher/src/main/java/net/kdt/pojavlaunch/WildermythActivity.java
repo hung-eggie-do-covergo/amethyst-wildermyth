@@ -90,8 +90,7 @@ public class WildermythActivity extends AppCompatActivity {
         show("Wildermyth's game files are needed. Point to a folder with your own copy of the game "
                 + "(wildermyth.jar, assets and lib).",
                 "Use my game files", () -> startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), PICK_GAME_DIR),
-                "Download with Steam", () -> show("Downloading through Steam is not available yet. "
-                        + "Use your own game files for now.", "Back", this::next));
+                "Download with Steam", () -> { if (WmCloud.isLoggedIn()) download(); else showLogin(this::download); });
     }
 
     @Override
@@ -114,8 +113,8 @@ public class WildermythActivity extends AppCompatActivity {
                 deleteTree(game);
                 if (!tmp.renameTo(game)) throw new IllegalStateException("could not move files into place");
                 runOnUiThread(this::next);
-            } catch (Exception e) {
-                runOnUiThread(() -> show("Copying failed: " + e.getMessage(), "Try again", this::showInstall));
+            } catch (Exception e) { android.util.Log.e("Wildermyth", "sync step failed", e);
+                runOnUiThread(() -> show("Copying failed: " + describe(e), "Try again", this::showInstall));
             }
         });
     }
@@ -140,15 +139,34 @@ public class WildermythActivity extends AppCompatActivity {
         f.delete();
     }
 
-    private void showLogin() {
+    private void download() {
+        show("Downloading Wildermyth from Steam…");
+        worker.execute(() -> {
+            try {
+                File tmp = new File(game.getPath() + ".partial");
+                WmCloud.downloadGame(tmp, pct -> runOnUiThread(() -> status.setText(
+                        String.format(java.util.Locale.ROOT, "Downloading Wildermyth from Steam… %.0f%%", pct))));
+                deleteTree(game);
+                if (!tmp.renameTo(game)) throw new IllegalStateException("could not move files into place");
+                runOnUiThread(this::next);
+            } catch (Exception e) { android.util.Log.e("Wildermyth", "sync step failed", e);
+                runOnUiThread(() -> show("Download failed: " + describe(e), "Try again", this::download, "Back", this::showInstall));
+            }
+        });
+    }
+
+    private void showLogin() { showLogin(this::next); }
+
+    /** Signs in once; the same sign-in then serves downloads, saves and achievements. */
+    private void showLogin(Runnable then) {
         show("Sign in to Steam to sync your saves and achievements. In the Steam mobile app, open "
                 + "Steam Guard and scan this code.");
         worker.execute(() -> {
             try {
                 WmCloud.login(url -> runOnUiThread(() -> { qr.setImageBitmap(qrBitmap(url)); qr.setVisibility(View.VISIBLE); }));
-                runOnUiThread(() -> { qr.setVisibility(View.GONE); next(); });
-            } catch (Exception e) {
-                runOnUiThread(() -> show("Steam sign-in failed: " + e.getMessage(), "Try again", this::showLogin));
+                runOnUiThread(() -> { qr.setVisibility(View.GONE); then.run(); });
+            } catch (Exception e) { android.util.Log.e("Wildermyth", "sync step failed", e);
+                runOnUiThread(() -> show("Steam sign-in failed: " + describe(e), "Try again", () -> showLogin(then)));
             }
         });
     }
@@ -159,10 +177,10 @@ public class WildermythActivity extends AppCompatActivity {
             try {
                 WmCloud.pull(game, false);
                 runOnUiThread(this::launchGame);
-            } catch (ConflictException e) {
+            } catch (ConflictException e) { android.util.Log.e("Wildermyth", "sync step failed", e);
                 runOnUiThread(() -> conflict(e.getFiles(), true));
-            } catch (Exception e) {
-                runOnUiThread(() -> show("Could not reach Steam Cloud: " + e.getMessage()
+            } catch (Exception e) { android.util.Log.e("Wildermyth", "sync step failed", e);
+                runOnUiThread(() -> show("Could not reach Steam Cloud: " + describe(e)
                                 + "\nIf you play now, your saves upload next time you are online.",
                         "Play anyway", this::launchGame, "Retry", this::syncAndPlay));
             }
@@ -188,8 +206,8 @@ public class WildermythActivity extends AppCompatActivity {
             try {
                 if (keepDevice) WmCloud.push(game, true); else WmCloud.pull(game, true);
                 runOnUiThread(beforePlay ? this::launchGame : this::afterSession);
-            } catch (Exception e) {
-                runOnUiThread(() -> show("Sync failed: " + e.getMessage(), "Retry", () -> resolve(keepDevice, beforePlay)));
+            } catch (Exception e) { android.util.Log.e("Wildermyth", "sync step failed", e);
+                runOnUiThread(() -> show("Sync failed: " + describe(e), "Retry", () -> resolve(keepDevice, beforePlay)));
             }
         });
     }
@@ -201,15 +219,22 @@ public class WildermythActivity extends AppCompatActivity {
     }
 
     private void afterSession() {
+        // Game files gone (reinstall, moved): there is nothing to upload, and uploading "nothing" would
+        // read as deleting every save.
+        if (!new File(game, "players").isDirectory()) {
+            prefs.edit().putBoolean(PREF_SESSION, false).commit();
+            next();
+            return;
+        }
         show("Uploading saves to Steam Cloud…");
         worker.execute(() -> {
             try {
                 WmCloud.push(game, false);
-            } catch (CloudChangedException e) {
+            } catch (CloudChangedException e) { android.util.Log.e("Wildermyth", "sync step failed", e);
                 runOnUiThread(() -> conflict(java.util.Collections.singletonList("(changed on another device)"), false));
                 return;
-            } catch (Exception e) {
-                runOnUiThread(() -> show("Could not upload saves: " + e.getMessage()
+            } catch (Exception e) { android.util.Log.e("Wildermyth", "sync step failed", e);
+                runOnUiThread(() -> show("Could not upload saves: " + describe(e)
                         + "\nThey stay on this device and upload next time.", "Retry", this::afterSession, "Play", this::syncAndPlay));
                 return;
             }
@@ -253,7 +278,15 @@ public class WildermythActivity extends AppCompatActivity {
         }
     }
 
-        private boolean gameRunning() {
+        /** A message a person can act on; some exceptions (timeouts, NPEs) carry none. */
+    private static String describe(Throwable e) {
+        Throwable root = e;
+        while (root.getCause() != null && root.getCause() != root) root = root.getCause();
+        String m = root.getMessage();
+        return root.getClass().getSimpleName() + (m == null ? "" : ": " + m);
+    }
+
+    private boolean gameRunning() {
         List<ActivityManager.RunningAppProcessInfo> procs = ((ActivityManager) getSystemService(ACTIVITY_SERVICE)).getRunningAppProcesses();
         if (procs != null) for (ActivityManager.RunningAppProcessInfo p : procs) if (p.processName.endsWith(":game")) return true;
         return false;
