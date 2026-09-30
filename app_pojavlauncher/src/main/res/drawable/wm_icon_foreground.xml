@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A campfire, the game's menu motif; drawn inside the 66dp adaptive-icon safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <!-- crossed logs -->
+    <path android:fillColor="#FF6B4226" android:pathData="M33.5,77.5 L72.5,67.5 L74.5,73.5 L35.5,83.5 Z"/>
+    <path android:fillColor="#FF81502D" android:pathData="M35.5,67.5 L74.5,77.5 L72.5,83.5 L33.5,73.5 Z"/>
+    <!-- outer flame -->
+    <path android:fillColor="#FFC8502A"
+        android:pathData="M54,24 C60,34 70,40 70,54 C70,64 63,72 54,72 C45,72 38,64 38,55 C38,47 43,43 45,36 C48,42 50,44 52,44 C51,37 52,30 54,24 Z"/>
+    <!-- inner flame -->
+    <path android:fillColor="#FFDE9E4A"
+        android:pathData="M54,38 C58,45 63,49 63,57 C63,64 59,69 54,69 C49,69 45,64 45,58 C45,53 48,50 50,46 C51,50 52,51 53,51 C52,46 53,42 54,38 Z"/>
+    <!-- hot core -->
+    <path android:fillColor="#FFF6E2B0"
+        android:pathData="M54,52 C56.5,56 58,58 58,61.5 C58,65 56.2,67 54,67 C51.8,67 50,65 50,62 C50,59.5 51.5,58 52.5,56 C53,57.5 53.5,58 54,58 C53.6,56 53.8,54 54,52 Z"/>
+</vector>
