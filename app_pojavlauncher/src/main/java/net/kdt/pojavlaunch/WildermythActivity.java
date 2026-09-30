@@ -290,7 +290,9 @@ public class WildermythActivity extends AppCompatActivity {
         worker.execute(() -> {
             try {
                 deleteTree(dest);
-                WmCloud.testDownload(dest, java.util.Collections.singleton("version.txt"));
+                // --ez wm_test_all true: the whole depot, to profile memory on a real download.
+                boolean all = getIntent().getBooleanExtra("wm_test_all", false);
+                WmCloud.testDownload(dest, all ? java.util.Collections.emptySet() : java.util.Collections.singleton("version.txt"));
                 String v = new String(java.nio.file.Files.readAllBytes(new File(dest, "version.txt").toPath())).trim();
                 android.util.Log.i("Wildermyth", "test download OK: version.txt = " + v);
                 runOnUiThread(() -> show("Test download OK. version.txt says: " + v, "Close", this::finish));
@@ -307,10 +309,17 @@ public class WildermythActivity extends AppCompatActivity {
         worker.execute(() -> {
             try {
                 File tmp = new File(game.getPath() + ".partial");
-                WmCloud.downloadGame(tmp, pct -> runOnUiThread(() -> {
-                    status.setText(String.format(java.util.Locale.ROOT, "Downloading… %.0f%%", pct));
-                    progress(pct);
-                }));
+                long[] lastUi = {0};
+                WmCloud.downloadGame(tmp, pct -> {
+                    // Called per chunk (~42k); redrawing each time cost more than the download.
+                    long now = android.os.SystemClock.uptimeMillis();
+                    if (now - lastUi[0] < 250) return;
+                    lastUi[0] = now;
+                    runOnUiThread(() -> {
+                        status.setText(String.format(java.util.Locale.ROOT, "Downloading… %.0f%%", pct));
+                        progress(pct);
+                    });
+                });
                 deleteTree(game);
                 if (!tmp.renameTo(game)) throw new IllegalStateException("could not move files into place");
                 runOnUiThread(() -> { transfer(false); next(); });
