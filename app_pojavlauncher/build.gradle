@@ -122,11 +122,11 @@ android {
             shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.customDebug
-            resValue "string", "app_name", "Amethyst (Debug)"
-            resValue "string", "app_short_name", "Amethyst (Debug)"
-            resValue 'string', 'application_package', 'org.angelauramc.amethyst.debug'
-            resValue 'string', 'storageProviderAuthorities', 'org.angelauramc.amethyst.scoped.gamefolder.debug'
-            resValue 'string', 'shareProviderAuthority', 'org.angelauramc.amethyst.scoped.controlfolder.debug'
+            resValue "string", "app_name", "Wildermyth"
+            resValue "string", "app_short_name", "Wildermyth"
+            resValue 'string', 'application_package', 'dev.eggnet.wildermyth.debug'
+            resValue 'string', 'storageProviderAuthorities', 'dev.eggnet.wildermyth.scoped.gamefolder.debug'
+            resValue 'string', 'shareProviderAuthority', 'dev.eggnet.wildermyth.scoped.controlfolder.debug'
         }
         proguard {
             initWith debug
@@ -146,10 +146,10 @@ android {
             // defaultConfig already set
             // multiDexEnabled = true
             // debuggable = true
-            resValue "string", "app_name", "Amethyst"
-            resValue "string", "app_short_name", "Amethyst"
-            resValue 'string', 'storageProviderAuthorities', 'org.angelauramc.amethyst.scoped.gamefolder'
-            resValue 'string', 'application_package', 'org.angelauramc.amethyst'
+            resValue "string", "app_name", "Wildermyth"
+            resValue "string", "app_short_name", "Wildermyth"
+            resValue 'string', 'storageProviderAuthorities', 'dev.eggnet.wildermyth.scoped.gamefolder'
+            resValue 'string', 'application_package', 'dev.eggnet.wildermyth'
         }
         gplay {
             initWith release
