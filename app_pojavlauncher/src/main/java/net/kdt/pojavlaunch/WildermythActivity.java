@@ -48,6 +48,7 @@ public class WildermythActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        ignoreJavaSteamCancellations();
         prefs = getSharedPreferences("wildermyth", MODE_PRIVATE);
         game = WildermythLauncher.gameDir(this);
         WmCloud.configure(new File(getFilesDir(), "wmcloud"), line -> runOnUiThread(() -> status.setText(line)));
@@ -222,7 +223,37 @@ public class WildermythActivity extends AppCompatActivity {
         });
     }
 
-    private boolean gameRunning() {
+    /**
+     * On disconnect JavaSteam cancels its pending jobs and the CancellationException escapes on its
+     * network thread. The desktop JVM just prints that; Android kills the app. The waiting caller
+     * already sees the failure, so only that exception from JavaSteam is swallowed.
+     */
+    private static void ignoreJavaSteamCancellations() {
+        Thread.UncaughtExceptionHandler prev = Thread.getDefaultUncaughtExceptionHandler();
+        if (prev instanceof JavaSteamGuard) return;
+        Thread.setDefaultUncaughtExceptionHandler(new JavaSteamGuard(prev));
+    }
+
+    private static final class JavaSteamGuard implements Thread.UncaughtExceptionHandler {
+        private final Thread.UncaughtExceptionHandler prev;
+        JavaSteamGuard(Thread.UncaughtExceptionHandler prev) { this.prev = prev; }
+
+        // Created inside CompletableFuture.cancel, so JavaSteam frames sit below the top one.
+        private static boolean fromJavaSteam(Throwable e) {
+            for (StackTraceElement f : e.getStackTrace()) if (f.getClassName().startsWith("in.dragonbra.javasteam.")) return true;
+            return false;
+        }
+
+        @Override public void uncaughtException(Thread t, Throwable e) {
+            if (e instanceof java.util.concurrent.CancellationException && fromJavaSteam(e)) {
+                android.util.Log.w("Wildermyth", "ignored JavaSteam job cancellation on " + t.getName(), e);
+                return;
+            }
+            if (prev != null) prev.uncaughtException(t, e);
+        }
+    }
+
+        private boolean gameRunning() {
         List<ActivityManager.RunningAppProcessInfo> procs = ((ActivityManager) getSystemService(ACTIVITY_SERVICE)).getRunningAppProcesses();
         if (procs != null) for (ActivityManager.RunningAppProcessInfo p : procs) if (p.processName.endsWith(":game")) return true;
         return false;
