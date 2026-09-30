@@ -56,8 +56,11 @@ public class LauncherProfiles {
         if(mainProfileJson == null) LauncherProfiles.load();
         String defaultProfileName = LauncherPreferences.DEFAULT_PREF.getString(LauncherPreferences.PREF_KEY_CURRENT_PROFILE, "");
         MinecraftProfile profile = mainProfileJson.profiles.get(defaultProfileName);
-        if(profile == null) throw new RuntimeException("The current profile stopped existing :(");
-        return profile;
+        if(profile != null) return profile;
+        // Only Amethyst's launcher UI picks a profile, and Wildermyth skips it; take the (default) first one.
+        Map.Entry<String, MinecraftProfile> first = mainProfileJson.profiles.entrySet().iterator().next();
+        LauncherPreferences.DEFAULT_PREF.edit().putString(LauncherPreferences.PREF_KEY_CURRENT_PROFILE, first.getKey()).apply();
+        return first.getValue();
     }
 
     /**

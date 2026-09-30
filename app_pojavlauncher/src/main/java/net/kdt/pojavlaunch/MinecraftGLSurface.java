@@ -297,6 +297,8 @@ public class MinecraftGLSurface extends View implements GrabListener, DirectGame
                     Log.e(TAG, "SDL failed to send motionevent!");
                 }
             });
+            // The game reads the pad through SDL; Amethyst's emulation would double it and run its remap wizard.
+            return true;
         }
         super.dispatchGenericMotionEvent(event);
         int mouseCursorIndex = -1;
@@ -386,6 +388,7 @@ public class MinecraftGLSurface extends View implements GrabListener, DirectGame
                     Log.e(TAG, "SDL failed to send keyevent!");
                 }
             });
+            return true;
         }
         if(isGamepadEvent){
             if(mGamepadHandler == null) createGamepad(this, event.getDevice());
