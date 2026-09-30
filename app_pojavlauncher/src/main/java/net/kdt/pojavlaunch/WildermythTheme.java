@@ -93,12 +93,32 @@ final class WildermythTheme {
 
     private Drawable face(Bitmap art, int fill, int border) {
         if (art != null) return new BitmapDrawable(ctx.getResources(), art);
+        if (fill != 0) return new BitmapDrawable(ctx.getResources(), parchment(lighten(fill, 2.1f))); // paper, not bark
         // Drawn stand-in for the parchment button: a lit top edge and a rust border, like the game's.
         GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
                 new int[]{lighten(fill, 1.35f), fill, darken(fill, 0.75f)});
         g.setCornerRadius(dp(6));
         g.setStroke(dp(2), border);
         return g;
+    }
+
+    /** Our own parchment strip: speckled paper with rust bands near each end, echoing the game's buttons. */
+    private static Bitmap parchment(int base) {
+        int w = 512, h = 120;
+        Bitmap b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        java.util.Random rnd = new java.util.Random(7); // fixed seed: the same texture every time
+        int[] px = new int[w * h];
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++) {
+                float grain = 0.9f + rnd.nextFloat() * 0.2f - (Math.abs(y - h / 2f) / h) * 0.25f;
+                int c = lighten(base, grain);
+                boolean band = (x > 18 && x < 30) || (x > 36 && x < 42) || (x > w - 30 && x < w - 18) || (x > w - 42 && x < w - 36);
+                if (band) c = lighten(Color.rgb(150, 70, 40), grain);
+                boolean edge = x < 6 || x > w - 7 || y < 4 || y > h - 5;
+                px[y * w + x] = edge && rnd.nextFloat() < 0.6f ? Color.TRANSPARENT : c;
+            }
+        b.setPixels(px, 0, w, 0, 0, w, h);
+        return b;
     }
 
     private static int lighten(int c, float f) {

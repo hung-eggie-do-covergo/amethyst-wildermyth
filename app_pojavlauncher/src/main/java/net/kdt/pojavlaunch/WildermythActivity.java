@@ -67,6 +67,7 @@ public class WildermythActivity extends AppCompatActivity {
         WmCloud.configure(new File(getFilesDir(), "wmcloud"), line -> runOnUiThread(() -> status.setText(line)));
 
         buildUi();
+        hideSystemBars();
         // Test and preview switches exist only in debuggable builds; release ignores them.
         boolean debuggable = (getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0;
         if (debuggable && getIntent().getBooleanExtra(EXTRA_TEST_DOWNLOAD, false)) { testDownload(); return; }
@@ -80,6 +81,21 @@ public class WildermythActivity extends AppCompatActivity {
         if (testing) return;
         // Back from the game (or relaunched after it crashed): upload before anything else.
         if (prefs.getBoolean(PREF_SESSION, false) && !gameRunning()) afterSession();
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) hideSystemBars(); // bars come back after the file picker and the game
+    }
+
+    /** Fullscreen like the game; a swipe from the edge shows the bars briefly. */
+    private void hideSystemBars() {
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        androidx.core.view.WindowInsetsControllerCompat c =
+                androidx.core.view.WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+        c.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars());
+        c.setSystemBarsBehavior(androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
     }
 
     /** Lays the screen out in the game's style; rebuilt once game files (and so the art) arrive. */
@@ -97,21 +113,29 @@ public class WildermythActivity extends AppCompatActivity {
         col.setOrientation(LinearLayout.VERTICAL);
         col.setGravity(Gravity.CENTER_HORIZONTAL);
         // Bottom padding keeps the last button clear of the footer on the handheld's short screen.
-        col.setPadding(theme.dp(24), theme.dp(8), theme.dp(24), theme.dp(40));
+        col.setPadding(theme.dp(24), theme.dp(8), theme.dp(24), theme.dp(32));
         if (theme.logo != null) {
             ImageView logo = new ImageView(this);
             logo.setImageBitmap(theme.logo);
             logo.setAdjustViewBounds(true);
-            col.addView(logo, new LinearLayout.LayoutParams(theme.dp(320), -2));
+            col.addView(logo, new LinearLayout.LayoutParams(theme.dp(280), -2));
         } else {
-            TextView t = text("Wildermyth", 56);
+            LinearLayout header = new LinearLayout(this);
+            header.setGravity(Gravity.CENTER);
+            ImageView fire = new ImageView(this); // the app icon's campfire: original art, safe to ship
+            fire.setImageResource(R.drawable.wm_icon_foreground);
+            LinearLayout.LayoutParams fp = new LinearLayout.LayoutParams(theme.dp(96), theme.dp(96));
+            fp.rightMargin = -theme.dp(14); // the vector keeps a safe-zone margin; pull the title in
+            header.addView(fire, fp);
+            TextView t = text("Wildermyth", 48);
             t.setTypeface(theme.fontBold);
             t.setTextColor(WildermythTheme.ACCENT);
             t.setLetterSpacing(0.04f);
             t.setShadowLayer(theme.dp(8), 0, theme.dp(2), 0xAA000000);
-            col.addView(t);
+            header.addView(t);
+            col.addView(header);
         }
-        heading = text("", 26);
+        heading = text("", 24);
         heading.setTypeface(theme.fontBold);
         heading.setTextColor(WildermythTheme.ACCENT);
         heading.setVisibility(View.GONE);
@@ -129,13 +153,18 @@ public class WildermythActivity extends AppCompatActivity {
         qr.setPadding(theme.dp(10), theme.dp(10), theme.dp(10), theme.dp(10));
         qr.setVisibility(View.GONE);
         col.addView(qr, new LinearLayout.LayoutParams(theme.dp(230), theme.dp(230)));
-        buttons = new LinearLayout(this);
-        buttons.setOrientation(LinearLayout.VERTICAL);
+        buttons = new LinearLayout(this); // side by side: the handheld screen is wide, not tall
         buttons.setGravity(Gravity.CENTER_HORIZONTAL);
         buttons.setPadding(0, theme.dp(12), 0, 0);
         col.addView(buttons);
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
+        // With no buttons on screen the pad would focus the scroller and grey out the whole screen.
+        scroll.setFocusable(false);
+        if (android.os.Build.VERSION.SDK_INT >= 26) {
+            scroll.setDefaultFocusHighlightEnabled(false);
+            root.setDefaultFocusHighlightEnabled(false);
+        }
         FrameLayout center = new FrameLayout(this);
         center.addView(col, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
         scroll.addView(center);
@@ -446,8 +475,8 @@ public class WildermythActivity extends AppCompatActivity {
         b.setText(label);
         theme.style(b);
         b.setOnClickListener(v -> action.run());
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(theme.dp(340), theme.dp(56));
-        lp.topMargin = theme.dp(6);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(theme.dp(300), theme.dp(56));
+        lp.leftMargin = lp.rightMargin = theme.dp(8);
         buttons.addView(b, lp);
     }
 
