@@ -32,8 +32,11 @@ final class WildermythTheme {
     WildermythTheme(Context ctx, File game) {
         this.ctx = ctx;
         File a = new File(game, "assets");
-        font = typeface(new File(a, "fonts/Alegreya-Regular.ttf"), Typeface.SERIF);
-        fontBold = typeface(new File(a, "fonts/Alegreya-Bold.ttf"), Typeface.create(Typeface.SERIF, Typeface.BOLD));
+        // The game's fonts when installed; otherwise the app's own copy of Alegreya (SIL OFL, see assets/fonts).
+        Typeface bundled = Typeface.createFromAsset(ctx.getAssets(), "fonts/Alegreya.ttf");
+        Typeface bundledBold = android.os.Build.VERSION.SDK_INT >= 28 ? Typeface.create(bundled, 700, false) : Typeface.create(bundled, Typeface.BOLD);
+        font = typeface(new File(a, "fonts/Alegreya-Regular.ttf"), bundled);
+        fontBold = typeface(new File(a, "fonts/Alegreya-Bold.ttf"), bundledBold);
         logo = bitmap(new File(a, "menu/logoWildermyth_dark.png"));
         vignette = bitmap(new File(a, "menu/edgeModal.png"));
         File ui = new File(a, "ui/scaleUI/unpacked");
@@ -67,6 +70,15 @@ final class WildermythTheme {
         return new android.graphics.drawable.LayerDrawable(new Drawable[]{face, ring});
     }
 
+    /** Warm glow fading to the dark edges, like the game's menu backdrop. */
+    Drawable background() {
+        GradientDrawable g = new GradientDrawable();
+        g.setGradientType(GradientDrawable.RADIAL_GRADIENT);
+        g.setColors(new int[]{Color.rgb(64, 43, 27), BG});
+        g.setGradientRadius(ctx.getResources().getDisplayMetrics().widthPixels * 0.6f);
+        return g;
+    }
+
     /** Rounded panel behind the QR code, which needs a light, quiet border to scan reliably. */
     Drawable card() {
         GradientDrawable g = new GradientDrawable();
@@ -81,12 +93,19 @@ final class WildermythTheme {
 
     private Drawable face(Bitmap art, int fill, int border) {
         if (art != null) return new BitmapDrawable(ctx.getResources(), art);
-        GradientDrawable g = new GradientDrawable();
-        g.setColor(fill);
+        // Drawn stand-in for the parchment button: a lit top edge and a rust border, like the game's.
+        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{lighten(fill, 1.35f), fill, darken(fill, 0.75f)});
         g.setCornerRadius(dp(6));
         g.setStroke(dp(2), border);
         return g;
     }
+
+    private static int lighten(int c, float f) {
+        return Color.rgb(Math.min(255, (int) (Color.red(c) * f)), Math.min(255, (int) (Color.green(c) * f)), Math.min(255, (int) (Color.blue(c) * f)));
+    }
+
+    private static int darken(int c, float f) { return lighten(c, f); }
 
     private static Typeface typeface(File f, Typeface fallback) {
         try {

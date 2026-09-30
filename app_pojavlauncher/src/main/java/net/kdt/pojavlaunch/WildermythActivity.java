@@ -45,11 +45,13 @@ public class WildermythActivity extends AppCompatActivity {
     static final String EXTRA_TEST_DOWNLOAD = "wm_test_download";
     /** Debug: draw the screen with sample content only, to check the look. */
     static final String EXTRA_PREVIEW = "wm_preview";
+    /** Which screen the preview draws: synced (default), firstrun, conflict. */
+    static final String EXTRA_PREVIEW_SCREEN = "wm_preview_screen";
     private boolean testing;
 
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private SharedPreferences prefs;
-    private TextView status, footer;
+    private TextView heading, status, footer;
     private ImageView qr;
     private ProgressBar progress;
     private LinearLayout buttons;
@@ -66,7 +68,7 @@ public class WildermythActivity extends AppCompatActivity {
 
         buildUi();
         if (getIntent().getBooleanExtra(EXTRA_TEST_DOWNLOAD, false)) { testDownload(); return; }
-        if (getIntent().getBooleanExtra(EXTRA_PREVIEW, false)) { testing = true; preview(); return; }
+        if (getIntent().getBooleanExtra(EXTRA_PREVIEW, false)) { testing = true; preview(getIntent().getStringExtra(EXTRA_PREVIEW_SCREEN)); return; }
         if (!prefs.getBoolean(PREF_SESSION, false)) next();
     }
 
@@ -82,7 +84,7 @@ public class WildermythActivity extends AppCompatActivity {
     private void buildUi() {
         theme = new WildermythTheme(this, game);
         FrameLayout root = new FrameLayout(this);
-        root.setBackgroundColor(WildermythTheme.BG);
+        root.setBackground(theme.background());
         if (theme.vignette != null) {
             ImageView v = new ImageView(this);
             v.setScaleType(ImageView.ScaleType.FIT_XY);
@@ -92,20 +94,29 @@ public class WildermythActivity extends AppCompatActivity {
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
         col.setGravity(Gravity.CENTER_HORIZONTAL);
-        col.setPadding(theme.dp(24), theme.dp(20), theme.dp(24), theme.dp(20));
+        // Bottom padding keeps the last button clear of the footer on the handheld's short screen.
+        col.setPadding(theme.dp(24), theme.dp(8), theme.dp(24), theme.dp(40));
         if (theme.logo != null) {
             ImageView logo = new ImageView(this);
             logo.setImageBitmap(theme.logo);
             logo.setAdjustViewBounds(true);
-            col.addView(logo, new LinearLayout.LayoutParams(theme.dp(420), -2));
+            col.addView(logo, new LinearLayout.LayoutParams(theme.dp(320), -2));
         } else {
-            TextView t = text("Wildermyth", 44);
+            TextView t = text("Wildermyth", 56);
             t.setTypeface(theme.fontBold);
+            t.setTextColor(WildermythTheme.ACCENT);
+            t.setLetterSpacing(0.04f);
+            t.setShadowLayer(theme.dp(8), 0, theme.dp(2), 0xAA000000);
             col.addView(t);
         }
-        status = text("", 20);
-        status.setMaxWidth(theme.dp(620));
-        col.addView(status);
+        heading = text("", 26);
+        heading.setTypeface(theme.fontBold);
+        heading.setTextColor(WildermythTheme.ACCENT);
+        heading.setVisibility(View.GONE);
+        col.addView(heading);
+        status = text("", 19);
+        status.setMaxWidth(theme.dp(760));
+        col.addView(status, new LinearLayout.LayoutParams(theme.dp(760), -2));
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progress.setMax(1000);
         progress.setProgressTintList(ColorStateList.valueOf(WildermythTheme.ACCENT));
@@ -136,7 +147,7 @@ public class WildermythActivity extends AppCompatActivity {
 
     private void updateFooter() {
         String account = WmCloud.accountName();
-        footer.setText(account == null ? "Not signed in to Steam" : "Signed in to Steam as " + account);
+        footer.setText(account == null ? "Not signed in" : "Steam: " + account);
     }
 
     /** Determinate progress, 0..100; negative hides the bar. */
@@ -155,8 +166,12 @@ public class WildermythActivity extends AppCompatActivity {
     }
 
     private void showInstall() {
-        show("Wildermyth's game files are needed. Point to a folder with your own copy of the game "
-                + "(wildermyth.jar, assets and lib).",
+        showInstallChoices();
+        heading("Welcome");
+    }
+
+    private void showInstallChoices() {
+        show("Wildermyth's game files are needed.",
                 "Use my game files", () -> startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), PICK_GAME_DIR),
                 "Download with Steam", () -> { if (WmCloud.isLoggedIn()) download(); else showLogin(this::download); });
     }
@@ -168,10 +183,10 @@ public class WildermythActivity extends AppCompatActivity {
         Uri tree = data.getData();
         DocumentFile src = DocumentFile.fromTreeUri(this, tree);
         if (src == null || src.findFile("wildermyth.jar") == null || src.findFile("assets") == null) {
-            show("That folder does not look like Wildermyth: wildermyth.jar or assets/ is missing.", "Try again", this::showInstall);
+            show("That folder isn't a Wildermyth install.", "Try again", this::showInstall);
             return;
         }
-        show("Copying game files…");
+        show("Copying…");
         worker.execute(() -> {
             try {
                 File tmp = new File(game.getPath() + ".partial");
@@ -198,7 +213,7 @@ public class WildermythActivity extends AppCompatActivity {
             }
             long mb = copied[0] >> 20;
             // ~2.7 GB for a full install; good enough for a bar, the MB count is exact.
-            runOnUiThread(() -> { status.setText("Copying game files… " + mb + " MB"); progress(Math.min(99f, mb / 27f)); });
+            runOnUiThread(() -> { status.setText("Copying… " + mb + " MB"); progress(Math.min(99f, mb / 27f)); });
         }
     }
 
@@ -208,9 +223,17 @@ public class WildermythActivity extends AppCompatActivity {
         f.delete();
     }
 
-    private void preview() {
-        show("Saves and achievements are synced with Steam.", "Play", () -> {}, "Close", this::finish);
-        progress(62);
+    private void preview(String screen) {
+        if ("firstrun".equals(screen)) {
+            game = new File(getCacheDir(), "no-game-installed"); // no art: the first-run look
+            buildUi();
+            showInstall();
+        } else if ("conflict".equals(screen)) {
+            conflict(java.util.Arrays.asList("a", "b", "c"), true);
+        } else {
+            show("All synced.", "Play", () -> {}, "Close", this::finish);
+            progress(62);
+        }
     }
 
     private void testDownload() {
@@ -233,12 +256,12 @@ public class WildermythActivity extends AppCompatActivity {
     }
 
     private void download() {
-        show("Downloading Wildermyth from Steam…");
+        show("Downloading…");
         worker.execute(() -> {
             try {
                 File tmp = new File(game.getPath() + ".partial");
                 WmCloud.downloadGame(tmp, pct -> runOnUiThread(() -> {
-                    status.setText(String.format(java.util.Locale.ROOT, "Downloading Wildermyth from Steam… %.0f%%", pct));
+                    status.setText(String.format(java.util.Locale.ROOT, "Downloading… %.0f%%", pct));
                     progress(pct);
                 }));
                 deleteTree(game);
@@ -254,8 +277,7 @@ public class WildermythActivity extends AppCompatActivity {
 
     /** Signs in once; the same sign-in then serves downloads, saves and achievements. */
     private void showLogin(Runnable then) {
-        show("Sign in to Steam to sync your saves and achievements. In the Steam mobile app, open "
-                + "Steam Guard and scan this code.");
+        show("Sign in: in the Steam app, open Steam Guard and scan this code.");
         worker.execute(() -> {
             try {
                 WmCloud.login(url -> runOnUiThread(() -> { qr.setImageBitmap(qrBitmap(url)); qr.setVisibility(View.VISIBLE); }));
@@ -267,7 +289,7 @@ public class WildermythActivity extends AppCompatActivity {
     }
 
     private void syncAndPlay() {
-        show("Syncing saves from Steam Cloud…");
+        show("Syncing saves…");
         worker.execute(() -> {
             try {
                 WmCloud.pull(game, false);
@@ -276,24 +298,18 @@ public class WildermythActivity extends AppCompatActivity {
             } catch (ConflictException e) { android.util.Log.e("Wildermyth", "sync step failed", e);
                 runOnUiThread(() -> conflict(e.getFiles(), true));
             } catch (Exception e) { android.util.Log.e("Wildermyth", "sync step failed", e);
-                runOnUiThread(() -> show("Could not reach Steam Cloud: " + describe(e)
-                                + "\nIf you play now, your saves upload next time you are online.",
-                        "Play anyway", this::launchGame, "Retry", this::syncAndPlay));
+                runOnUiThread(() -> show("Can't reach Steam. Saves will sync next time.",
+                        "Play offline", this::launchGame, "Retry", this::syncAndPlay));
             }
         });
     }
 
     /** Both sides changed. [beforePlay] decides what happens after the choice. */
     private void conflict(List<String> files, boolean beforePlay) {
-        new AlertDialog.Builder(this)
-                .setTitle("Saves differ from Steam Cloud")
-                .setMessage(files.size() + " save file(s) on this device differ from the ones in Steam Cloud, "
-                        + "and both have changed. Which saves do you want to keep? The other copy is backed up on "
-                        + "this device either way.")
-                .setCancelable(false)
-                .setPositiveButton("Keep this device", (d, w) -> resolve(true, beforePlay))
-                .setNegativeButton("Use Steam Cloud", (d, w) -> resolve(false, beforePlay))
-                .show();
+        show("Both this device and Steam Cloud changed. Keep which? The other copy is backed up.",
+                "Keep this device", () -> resolve(true, beforePlay),
+                "Use Steam Cloud", () -> resolve(false, beforePlay));
+        heading("Saves differ");
     }
 
     private void resolve(boolean keepDevice, boolean beforePlay) {
@@ -334,7 +350,7 @@ public class WildermythActivity extends AppCompatActivity {
             next();
             return;
         }
-        show("Uploading saves to Steam Cloud…");
+        show("Uploading saves…");
         worker.execute(() -> {
             try {
                 WmCloud.push(game, false);
@@ -342,8 +358,7 @@ public class WildermythActivity extends AppCompatActivity {
                 runOnUiThread(() -> conflict(java.util.Collections.singletonList("(changed on another device)"), false));
                 return;
             } catch (Exception e) { android.util.Log.e("Wildermyth", "sync step failed", e);
-                runOnUiThread(() -> show("Could not upload saves: " + describe(e)
-                        + "\nThey stay on this device and upload next time.", "Retry", this::afterSession, "Play", this::syncAndPlay));
+                runOnUiThread(() -> show("Upload failed. Saves stay here and sync next time.", "Retry", this::afterSession, "Play", this::syncAndPlay));
                 return;
             }
             try {
@@ -352,7 +367,7 @@ public class WildermythActivity extends AppCompatActivity {
                 // Retried after the next session; saves matter more than achievements.
             }
             prefs.edit().putBoolean(PREF_SESSION, false).commit();
-            runOnUiThread(() -> show("Saves and achievements are synced with Steam.", "Play", this::syncAndPlay, "Close", this::finish));
+            runOnUiThread(() -> show("All synced.", "Play", this::syncAndPlay, "Close", this::finish));
         });
     }
 
@@ -401,9 +416,16 @@ public class WildermythActivity extends AppCompatActivity {
     }
 
     private void show(String message) {
+        heading.setVisibility(View.GONE);
         status.setText(message);
         buttons.removeAllViews();
         progress(-1);
+    }
+
+    /** A title above the current message; call after show(). */
+    private void heading(String h) {
+        heading.setText(h);
+        heading.setVisibility(View.VISIBLE);
     }
 
     private void show(String message, String label, Runnable action) {
@@ -422,8 +444,8 @@ public class WildermythActivity extends AppCompatActivity {
         b.setText(label);
         theme.style(b);
         b.setOnClickListener(v -> action.run());
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(theme.dp(340), theme.dp(64));
-        lp.topMargin = theme.dp(8);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(theme.dp(340), theme.dp(56));
+        lp.topMargin = theme.dp(6);
         buttons.addView(b, lp);
     }
 
