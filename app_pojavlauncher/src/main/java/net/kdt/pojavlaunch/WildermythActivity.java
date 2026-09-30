@@ -183,6 +183,17 @@ public class WildermythActivity extends AppCompatActivity {
         footer.setText(account == null ? "Not signed in" : "Steam: " + account);
     }
 
+    /** While copying or downloading: screen stays on, and a foreground service keeps going if it is turned off. */
+    private void transfer(boolean on) {
+        if (on) {
+            getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            net.kdt.pojavlaunch.services.WildermythTransferService.start(this);
+        } else {
+            getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            net.kdt.pojavlaunch.services.WildermythTransferService.stop(this);
+        }
+    }
+
     /** Determinate progress, 0..100; negative hides the bar. */
     private void progress(float pct) {
         progress.setVisibility(pct < 0 ? View.GONE : View.VISIBLE);
@@ -220,6 +231,7 @@ public class WildermythActivity extends AppCompatActivity {
             return;
         }
         show("Copying…");
+        transfer(true);
         worker.execute(() -> {
             try {
                 File tmp = new File(game.getPath() + ".partial");
@@ -228,8 +240,9 @@ public class WildermythActivity extends AppCompatActivity {
                 copyTree(src, tmp, copied);
                 deleteTree(game);
                 if (!tmp.renameTo(game)) throw new IllegalStateException("could not move files into place");
-                runOnUiThread(this::next);
+                runOnUiThread(() -> { transfer(false); next(); });
             } catch (Exception e) { android.util.Log.e("Wildermyth", "sync step failed", e);
+                runOnUiThread(() -> transfer(false));
                 runOnUiThread(() -> show("Copying failed: " + describe(e), "Try again", this::showInstall));
             }
         });
@@ -290,6 +303,7 @@ public class WildermythActivity extends AppCompatActivity {
 
     private void download() {
         show("Downloading…");
+        transfer(true);
         worker.execute(() -> {
             try {
                 File tmp = new File(game.getPath() + ".partial");
@@ -299,8 +313,9 @@ public class WildermythActivity extends AppCompatActivity {
                 }));
                 deleteTree(game);
                 if (!tmp.renameTo(game)) throw new IllegalStateException("could not move files into place");
-                runOnUiThread(this::next);
+                runOnUiThread(() -> { transfer(false); next(); });
             } catch (Exception e) { android.util.Log.e("Wildermyth", "sync step failed", e);
+                runOnUiThread(() -> transfer(false));
                 runOnUiThread(() -> show("Download failed: " + describe(e), "Try again", this::download, "Back", this::showInstall));
             }
         });
