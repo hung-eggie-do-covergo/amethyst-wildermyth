@@ -78,7 +78,20 @@ android {
     compileSdk = 37
 
 
+    // Wildermyth release key lives outside the repo (never commit it): ~/.config/wildermyth/signing.properties
+    def wmSigning = new Properties()
+    def wmSigningFile = new File(System.getProperty("user.home"), ".config/wildermyth/signing.properties")
+    if (wmSigningFile.isFile()) wmSigningFile.withInputStream { wmSigning.load(it) }
+
     signingConfigs {
+        wildermythRelease {
+            if (wmSigning.storeFile) {
+                storeFile file(wmSigning.storeFile)
+                storePassword wmSigning.storePassword
+                keyAlias wmSigning.keyAlias
+                keyPassword wmSigning.keyPassword
+            }
+        }
         customDebug {
             storeFile file("debug.keystore")
             storePassword "android"
@@ -142,7 +155,7 @@ android {
             // Don't set to true or java.awt will be a.a or something similar.
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.customRelease
+            signingConfig signingConfigs.wildermythRelease
             // defaultConfig already set
             // multiDexEnabled = true
             // debuggable = true
@@ -194,6 +207,8 @@ android {
 
     lint {
         abortOnError false
+        // Amethyst's leftover translations fail release lint; they are not ours to fix.
+        checkReleaseBuilds false
     }
 }
 

@@ -67,8 +67,10 @@ public class WildermythActivity extends AppCompatActivity {
         WmCloud.configure(new File(getFilesDir(), "wmcloud"), line -> runOnUiThread(() -> status.setText(line)));
 
         buildUi();
-        if (getIntent().getBooleanExtra(EXTRA_TEST_DOWNLOAD, false)) { testDownload(); return; }
-        if (getIntent().getBooleanExtra(EXTRA_PREVIEW, false)) { testing = true; preview(getIntent().getStringExtra(EXTRA_PREVIEW_SCREEN)); return; }
+        // Test and preview switches exist only in debuggable builds; release ignores them.
+        boolean debuggable = (getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0;
+        if (debuggable && getIntent().getBooleanExtra(EXTRA_TEST_DOWNLOAD, false)) { testDownload(); return; }
+        if (debuggable && getIntent().getBooleanExtra(EXTRA_PREVIEW, false)) { testing = true; preview(getIntent().getStringExtra(EXTRA_PREVIEW_SCREEN)); return; }
         if (!prefs.getBoolean(PREF_SESSION, false)) next();
     }
 
