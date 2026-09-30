@@ -1,5 +1,6 @@
 package net.kdt.pojavlaunch;
 
+import java.io.File;
 import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
@@ -66,7 +67,13 @@ public class TestStorageActivity extends Activity {
         AsyncAssetManager.unpackComponents(this);
         AsyncAssetManager.unpackSingleFiles(this);
 
-        Intent intent =  new Intent(this, LauncherActivity.class);
+        // Straight into the game once it is installed; the launcher UI is only a fallback for now.
+        Intent intent;
+        if (new File(WildermythLauncher.gameDir(this), "wildermyth.jar").isFile()) {
+            intent = new Intent(this, MainActivity.class).putExtra(WildermythLauncher.EXTRA, true);
+        } else {
+            intent = new Intent(this, LauncherActivity.class);
+        }
         startActivity(intent);
         finish();
     }

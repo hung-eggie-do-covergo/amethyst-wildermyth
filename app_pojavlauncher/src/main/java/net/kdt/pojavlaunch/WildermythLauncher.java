@@ -1,0 +1,84 @@
+package net.kdt.pojavlaunch;
+
+import static net.kdt.pojavlaunch.Architecture.archAsStringAndroid;
+import static net.kdt.pojavlaunch.Architecture.getDeviceArchitecture;
+
+import android.content.Context;
+
+import androidx.appcompat.app.AppCompatActivity;
+
+import net.kdt.pojavlaunch.extra.ExtraConstants;
+import net.kdt.pojavlaunch.extra.ExtraCore;
+import net.kdt.pojavlaunch.multirt.MultiRTUtils;
+import net.kdt.pojavlaunch.multirt.Runtime;
+import net.kdt.pojavlaunch.utils.JREUtils;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
+
+/** Boots Wildermyth's desktop build on the bundled Java 8 with Amethyst's LWJGL and Zink. */
+public final class WildermythLauncher {
+    public static final String EXTRA = "wildermyth";
+    private static final String MAIN_CLASS = "com.worldwalkergames.legacy.LegacyDesktop";
+    // Wildermyth is built against LWJGL 3.3.1; the closest bundled build is 3.3.3.
+    private static final String LWJGL = "3.3.3";
+
+    private WildermythLauncher() {}
+
+    /** The game install: assets/, lib/ and wildermyth.jar. */
+    public static File gameDir(Context ctx) {
+        return new File(ctx.getExternalFilesDir(null), "wildermyth");
+    }
+
+    /**
+     * The game's manifest Class-Path lists desktop LWJGL, whose jars carry glibc natives LWJGL would extract
+     * and fail to load. Moving them aside makes the JVM skip those entries; Amethyst's LWJGL stands in.
+     */
+    private static void retireDesktopLwjgl(File game) {
+        File lib = new File(game, "lib");
+        File aside = new File(lib, "desktop-only");
+        File[] jars = lib.listFiles((d, n) -> n.startsWith("lwjgl-") && n.endsWith(".jar"));
+        if (jars == null || jars.length == 0) return;
+        if (!aside.isDirectory() && !aside.mkdirs()) throw new IllegalStateException("cannot create " + aside);
+        for (File j : jars) if (!j.renameTo(new File(aside, j.getName()))) throw new IllegalStateException("cannot move " + j);
+    }
+
+    public static void launch(AppCompatActivity activity) throws Throwable {
+        File game = gameDir(activity);
+        File jar = new File(game, "wildermyth.jar");
+        if (!jar.isFile()) throw new IllegalStateException("Wildermyth is not installed at " + game);
+
+        retireDesktopLwjgl(game);
+
+        // The runtime unpacks asynchronously at app start; a first launch can get here before it is done.
+        for (int i = 0; i < 120 && MultiRTUtils.readInternalRuntimeVersion("Internal") == null; i++) Thread.sleep(500);
+        Runtime runtime = MultiRTUtils.forceReread("Internal"); // Java 8: the game needs JDK internals 9+ hides
+        // Normally set from the Minecraft version; the EGL bridge parses it and crashes on null.
+        ExtraCore.setValue(ExtraConstants.OPEN_GL_VERSION, "3");
+        Tools.iLwjglVersion = 331;
+        Tools.sLwjglVersion = LWJGL;
+        Tools.lwjglNativesDir = String.format("%s/lwjgl-%s-natives/%s", Tools.DIR_DATA, LWJGL, archAsStringAndroid(getDeviceArchitecture()));
+
+        // Android LWJGL first, then the game jar, whose manifest Class-Path brings in the rest of lib/.
+        StringBuilder cp = new StringBuilder();
+        File lwjglDir = new File(Tools.DIR_GAME_HOME, "lwjgl3/" + LWJGL);
+        cp.append(new File(lwjglDir, "lwjgl.jar")).append(':');
+        cp.append(new File(lwjglDir, "lwjgl-" + LWJGL + "-merged-modules.jar")).append(':');
+        File[] modules = lwjglDir.listFiles((d, n) -> n.endsWith(".jar") && !n.equals("lwjgl.jar")
+                && !n.contains("merged-modules") && !n.endsWith("lwjglx.jar"));
+        if (modules != null) for (File m : modules) cp.append(m).append(':');
+        cp.append(jar);
+
+        List<String> args = new ArrayList<>();
+        args.add("-Djava.awt.headless=true");
+        // libGDX sees this runtime as Android and System.loadLibrary()s its natives: ship Android builds there.
+        String gdxNatives = new File(Tools.DIR_DATA, "wildermyth").getAbsolutePath();
+        args.add("-Djava.library.path=" + Tools.lwjglNativesDir + ":" + gdxNatives + ":" + Tools.NATIVE_LIB_DIR);
+        args.add("-Dorg.lwjgl.librarypath=" + Tools.lwjglNativesDir);
+        args.add("-cp");
+        args.add(cp.toString());
+        args.add(MAIN_CLASS);
+        JREUtils.launchJavaVM(activity, runtime, game, args, "");
+    }
+}

@@ -886,8 +886,8 @@ public class GLFW
             checkSafe(width, 1);
             checkSafe(height, 1);
         }
-        width.put(internalGetWindow(window).width);
-        height.put(internalGetWindow(window).height);
+        width.put(width.position(), internalGetWindow(window).width);
+        height.put(height.position(), internalGetWindow(window).height);
     }
 
     public static void glfwGetWindowFrameSize(@NativeType("GLFWwindow *") long window, @Nullable @NativeType("int *") IntBuffer left, @Nullable @NativeType("int *") IntBuffer top, @Nullable @NativeType("int *") IntBuffer right, @Nullable @NativeType("int *") IntBuffer bottom) {
@@ -900,8 +900,8 @@ public class GLFW
     }
 
     public static void glfwGetWindowContentScale(@NativeType("GLFWwindow *") long window, @Nullable @NativeType("float *") FloatBuffer xscale, @Nullable @NativeType("float *") FloatBuffer yscale) {
-        if (xscale != null) xscale.put(scale);
-        if (yscale != null) yscale.put(scale);
+        if (xscale != null) xscale.put(xscale.position(), scale);
+        if (yscale != null) yscale.put(yscale.position(), scale);
     }
 
     @Nullable
@@ -923,8 +923,8 @@ public class GLFW
             checkSafe(ypos, 1);
         }
 
-        xpos.put(0);
-        ypos.put(0);
+        xpos.put(xpos.position(), 0);
+        ypos.put(ypos.position(), 0);
     }
 
     public static void glfwGetMonitorWorkarea(@NativeType("GLFWmonitor *") long monitor, @Nullable @NativeType("int *") IntBuffer xpos, @Nullable @NativeType("int *") IntBuffer ypos, @Nullable @NativeType("int *") IntBuffer width, @Nullable @NativeType("int *") IntBuffer height) {
@@ -935,16 +935,16 @@ public class GLFW
             checkSafe(height, 1);
         }
 
-        xpos.put(0);
-        ypos.put(0);
-        width.put(mGLFWWindowWidth);
-        height.put(mGLFWWindowHeight);
+        xpos.put(xpos.position(), 0);
+        ypos.put(ypos.position(), 0);
+        width.put(width.position(), mGLFWWindowWidth);
+        height.put(height.position(), mGLFWWindowHeight);
     }
 
     public static void glfwGetMonitorPhysicalSize(@NativeType("GLFWmonitor *") long monitor, @Nullable @NativeType("int *") IntBuffer widthMM, @Nullable @NativeType("int *") IntBuffer heightMM) {
         if (widthMM != null && heightMM != null) {
-            widthMM.put(mGLFWWindowWidth);
-            heightMM.put(mGLFWWindowHeight);
+            widthMM.put(widthMM.position(), mGLFWWindowWidth);
+            heightMM.put(heightMM.position(), mGLFWWindowHeight);
         }
     }
 
@@ -993,9 +993,9 @@ public class GLFW
             checkSafe(rev, 1);
         }
 
-        major.put(GLFW_VERSION_MAJOR);
-        minor.put(GLFW_VERSION_MINOR);
-        rev.put(GLFW_VERSION_REVISION);
+        major.put(major.position(), GLFW_VERSION_MAJOR);
+        minor.put(minor.position(), GLFW_VERSION_MINOR);
+        rev.put(rev.position(), GLFW_VERSION_REVISION);
     }
 
     public static String glfwGetVersionString() {
@@ -1190,8 +1190,8 @@ public class GLFW
     }
 
     public static void glfwGetWindowSize(long window, IntBuffer width, IntBuffer height) {
-        if (width != null) width.put(internalGetWindow(window).width);
-        if (height != null) height.put(internalGetWindow(window).height);
+        if (width != null) width.put(width.position(), internalGetWindow(window).width);
+        if (height != null) height.put(height.position(), internalGetWindow(window).height);
     }
 
     public static void glfwSetWindowSizeLimits(@NativeType("GLFWwindow *") long window, int minwidth, int minheight, int maxwidth, int maxheight) {
@@ -1531,6 +1531,12 @@ public class GLFW
     }
 
     /** Array version of: {@link #glfwGetWindowPos GetWindowPos} */
+    // libGDX's desktop backend calls the IntBuffer form; the window always sits at the origin.
+    public static void glfwGetWindowPos(@NativeType("GLFWwindow *") long window, @Nullable @NativeType("int *") IntBuffer xpos, @Nullable @NativeType("int *") IntBuffer ypos) {
+        if (xpos != null) xpos.put(xpos.position(), 0);
+        if (ypos != null) ypos.put(ypos.position(), 0);
+    }
+
     public static void glfwGetWindowPos(@NativeType("GLFWwindow *") long window, @Nullable @NativeType("int *") int[] xpos, @Nullable @NativeType("int *") int[] ypos) {
         if (CHECKS) {
             // check(window);

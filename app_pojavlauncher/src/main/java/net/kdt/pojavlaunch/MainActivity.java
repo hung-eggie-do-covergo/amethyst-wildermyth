@@ -242,6 +242,26 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
                 if (minecraftProfile.pojavRendererName.equals("vulkan_zink")) Tools.LOCAL_RENDERER = "opengles3_desktopgl_zink_kopper";
             }
 
+            boolean wildermyth = getIntent().getBooleanExtra(WildermythLauncher.EXTRA, false);
+            if (wildermyth) {
+                // Wildermyth asks GLFW for a 4.5 core context; only Zink provides one here.
+                Tools.LOCAL_RENDERER = "opengles3_desktopgl_zink_kopper";
+                isInputStackCall = true;
+                CallbackBridge.nativeSetUseInputStackQueue(true);
+                Tools.getDisplayMetrics(this);
+                windowWidth = Tools.getDisplayFriendlyRes(currentDisplayMetrics.widthPixels, 1f);
+                windowHeight = Tools.getDisplayFriendlyRes(currentDisplayMetrics.heightPixels, 1f);
+                minecraftGLView.setSurfaceReadyListener(() -> {
+                    try {
+                        touchControllerInputView.setSize(minecraftGLView.getWidth(), minecraftGLView.getHeight());
+                        WildermythLauncher.launch(this);
+                    } catch (Throwable e) {
+                        Tools.showErrorRemote(e);
+                    }
+                });
+                return;
+            }
+
             setTitle("Minecraft " + minecraftProfile.lastVersionId);
 
             // Minecraft 1.13+

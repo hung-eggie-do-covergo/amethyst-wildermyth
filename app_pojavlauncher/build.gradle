@@ -100,7 +100,7 @@ android {
     }
 
     defaultConfig {
-        applicationId "org.angelauramc.amethyst"
+        applicationId "dev.eggnet.wildermyth"
         minSdkVersion 21
         targetSdkVersion 34
         versionCode 10000000
