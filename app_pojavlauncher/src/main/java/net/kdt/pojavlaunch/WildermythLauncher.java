@@ -4,6 +4,7 @@ import static net.kdt.pojavlaunch.Architecture.archAsStringAndroid;
 import static net.kdt.pojavlaunch.Architecture.getDeviceArchitecture;
 
 import android.content.Context;
+import android.system.Os;
 
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -12,6 +13,8 @@ import net.kdt.pojavlaunch.extra.ExtraCore;
 import net.kdt.pojavlaunch.multirt.MultiRTUtils;
 import net.kdt.pojavlaunch.multirt.Runtime;
 import net.kdt.pojavlaunch.utils.JREUtils;
+
+import org.lwjgl.glfw.CallbackBridge;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -79,6 +82,13 @@ public final class WildermythLauncher {
         args.add("-cp");
         args.add(cp.toString());
         args.add(MAIN_CLASS);
+        // SDL's HIDAPI driver looks up Android classes from the game's (desktop JVM) thread and fails;
+        // the handheld's pad is a plain Android input device, so it does not need HIDAPI.
+        Os.setenv("SDL_JOYSTICK_HIDAPI", "0", true);
+        // SDL needs its Android JNI side before the game touches it. Amethyst normally does this from a
+        // hook on SDL_InitSubSystem, but Jamepad goes through sdl2-compat, which calls SDL3 directly.
+        CallbackBridge.notifyLauncher(CallbackBridge.NOTIF_TYPE_SDL, CallbackBridge.ACTION_INIT_LAUNCHER_INTEGRATION);
+        Tools.SDL.initializeControllerSubsystems();
         JREUtils.launchJavaVM(activity, runtime, game, args, "");
     }
 }
