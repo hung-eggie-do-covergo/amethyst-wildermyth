@@ -200,6 +200,7 @@ public class WildermythActivity extends AppCompatActivity {
         worker.execute(() -> {
             try {
                 WmCloud.pull(game, false);
+                refreshOwnedDlc();
                 runOnUiThread(this::launchGame);
             } catch (ConflictException e) { android.util.Log.e("Wildermyth", "sync step failed", e);
                 runOnUiThread(() -> conflict(e.getFiles(), true));
@@ -234,6 +235,18 @@ public class WildermythActivity extends AppCompatActivity {
                 runOnUiThread(() -> show("Sync failed: " + describe(e), "Retry", () -> resolve(keepDevice, beforePlay)));
             }
         });
+    }
+
+    /** Asks Steam which DLC the account owns; the last answer is kept for offline play. */
+    private void refreshOwnedDlc() {
+        try {
+            List<Integer> owned = WmCloud.ownedDlc();
+            StringBuilder sb = new StringBuilder();
+            for (Integer id : owned) sb.append(sb.length() == 0 ? "" : ",").append(id);
+            prefs.edit().putString(WildermythLauncher.PREF_OWNED_DLC, sb.toString()).commit();
+        } catch (Exception e) {
+            android.util.Log.w("Wildermyth", "DLC ownership check failed; using the last answer", e);
+        }
     }
 
     private void launchGame() {

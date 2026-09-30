@@ -23,6 +23,8 @@ import java.util.List;
 /** Boots Wildermyth's desktop build on the bundled Java 8 with Amethyst's LWJGL and Zink. */
 public final class WildermythLauncher {
     public static final String EXTRA = "wildermyth";
+    /** Comma-separated DLC app IDs Steam confirmed the account owns (set by WildermythActivity). */
+    public static final String PREF_OWNED_DLC = "wm_owned_dlc";
     private static final String MAIN_CLASS = "com.worldwalkergames.legacy.LegacyDesktop";
     // Wildermyth is built against LWJGL 3.3.1; the closest bundled build is 3.3.3.
     private static final String LWJGL = "3.3.3";
@@ -81,6 +83,10 @@ public final class WildermythLauncher {
         String gdxNatives = new File(Tools.DIR_DATA, "wildermyth").getAbsolutePath();
         args.add("-Djava.library.path=" + Tools.lwjglNativesDir + ":" + gdxNatives + ":" + Tools.NATIVE_LIB_DIR);
         args.add("-Dorg.lwjgl.librarypath=" + Tools.lwjglNativesDir);
+        // Owned DLC: the game would ask the Steam client, which is not here; the agent answers for it.
+        String owned = activity.getSharedPreferences("wildermyth", Context.MODE_PRIVATE).getString(PREF_OWNED_DLC, "");
+        args.add("-Dwm.ownedDlc=" + owned);
+        args.add("-javaagent:" + new File(Tools.DIR_DATA, "wildermyth/wm-dlcagent.jar").getAbsolutePath());
         args.add("-cp");
         args.add(cp.toString());
         args.add(MAIN_CLASS);
