@@ -67,7 +67,7 @@ public class TestStorageActivity extends Activity {
         AsyncAssetManager.unpackComponents(this);
         AsyncAssetManager.unpackSingleFiles(this);
 
-        startActivity(new Intent(this, WildermythActivity.class));
+        startActivity(new Intent(this, WildermythActivity.class).putExtras(getIntent()));
         finish();
     }
 }

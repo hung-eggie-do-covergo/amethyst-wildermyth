@@ -37,6 +37,9 @@ import wmcloud.WmCloud;
 public class WildermythActivity extends AppCompatActivity {
     private static final int PICK_GAME_DIR = 1;
     private static final String PREF_SESSION = "wm_session_active";
+    /** Debug: fetch one small file from Steam into the cache and report, touching nothing else. */
+    static final String EXTRA_TEST_DOWNLOAD = "wm_test_download";
+    private boolean testing;
 
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private SharedPreferences prefs;
@@ -69,12 +72,14 @@ public class WildermythActivity extends AppCompatActivity {
         root.addView(qr, new LinearLayout.LayoutParams(560, 560));
         root.addView(buttons);
         setContentView(root);
+        if (getIntent().getBooleanExtra(EXTRA_TEST_DOWNLOAD, false)) { testDownload(); return; }
         if (!prefs.getBoolean(PREF_SESSION, false)) next();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+        if (testing) return;
         // Back from the game (or relaunched after it crashed): upload before anything else.
         if (prefs.getBoolean(PREF_SESSION, false) && !gameRunning()) afterSession();
     }
@@ -137,6 +142,25 @@ public class WildermythActivity extends AppCompatActivity {
         File[] kids = f.listFiles();
         if (kids != null) for (File k : kids) deleteTree(k);
         f.delete();
+    }
+
+    private void testDownload() {
+        testing = true;
+        WmCloud.debugLog(line -> android.util.Log.d("WildermythSteam", line));
+        File dest = new File(getCacheDir(), "wm-download-test");
+        show("Test: downloading version.txt from Steam…");
+        worker.execute(() -> {
+            try {
+                deleteTree(dest);
+                WmCloud.testDownload(dest, java.util.Collections.singleton("version.txt"));
+                String v = new String(java.nio.file.Files.readAllBytes(new File(dest, "version.txt").toPath())).trim();
+                android.util.Log.i("Wildermyth", "test download OK: version.txt = " + v);
+                runOnUiThread(() -> show("Test download OK. version.txt says: " + v, "Close", this::finish));
+            } catch (Exception e) {
+                android.util.Log.e("Wildermyth", "test download failed", e);
+                runOnUiThread(() -> show("Test download failed: " + describe(e), "Close", this::finish));
+            }
+        });
     }
 
     private void download() {
