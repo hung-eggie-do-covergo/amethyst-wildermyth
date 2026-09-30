@@ -133,6 +133,8 @@ public class WildermythActivity extends AppCompatActivity {
             t.setLetterSpacing(0.04f);
             t.setShadowLayer(theme.dp(8), 0, theme.dp(2), 0xAA000000);
             header.addView(t);
+            // Same width as the campfire on the right, so the title (not title + icon) is centred.
+            header.addView(new View(this), new LinearLayout.LayoutParams(theme.dp(96 - 14), 1));
             col.addView(header);
         }
         heading = text("", 24);
