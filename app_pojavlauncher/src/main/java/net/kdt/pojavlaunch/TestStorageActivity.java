@@ -67,14 +67,7 @@ public class TestStorageActivity extends Activity {
         AsyncAssetManager.unpackComponents(this);
         AsyncAssetManager.unpackSingleFiles(this);
 
-        // Straight into the game once it is installed; the launcher UI is only a fallback for now.
-        Intent intent;
-        if (new File(WildermythLauncher.gameDir(this), "wildermyth.jar").isFile()) {
-            intent = new Intent(this, MainActivity.class).putExtra(WildermythLauncher.EXTRA, true);
-        } else {
-            intent = new Intent(this, LauncherActivity.class);
-        }
-        startActivity(intent);
+        startActivity(new Intent(this, WildermythActivity.class));
         finish();
     }
 }

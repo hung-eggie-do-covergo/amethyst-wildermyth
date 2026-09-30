@@ -3,6 +3,9 @@ pluginManagement {
         gradlePluginPortal()
         google()
     }
+    plugins {
+        id 'com.gradleup.shadow' version '9.2.2' // for :wmcloud's CLI jar
+    }
 }
 
 dependencyResolutionManagement {
@@ -24,3 +27,6 @@ include ':arc_dns_injector'
 include ':MioLibPatcher'
 include ':forge_installer'
 include ':androidnsbypass'
+
+include ':wmcloud'
+project(':wmcloud').projectDir = file('../wmcloud')

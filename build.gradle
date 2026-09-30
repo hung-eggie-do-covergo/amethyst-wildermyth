@@ -31,6 +31,7 @@ static void writeVersionFile(File[] jarFileArray, File versionFile){
 
 subprojects {subproject ->
     if (subproject.name.contains("lwjgl")) return
+    if (subproject.name == "wmcloud") return // an ordinary library, not a JRE-side component
     tasks.withType(Jar).configureEach {jar ->
         System.out.println("Subproject $subproject configuring jar task destination to app_pojavlauncher/src/main/assets/components/$subproject.name/")
         destinationDirectory.set(

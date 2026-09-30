@@ -59,6 +59,10 @@
             </intent-filter>
         </activity>
         <activity
+            android:name=".WildermythActivity"
+            android:label="@string/app_short_name"
+            android:screenOrientation="sensorLandscape" />
+        <activity
             android:name=".LauncherActivity"
             android:label="@string/app_short_name"
             android:windowSoftInputMode="adjustResize"/>
