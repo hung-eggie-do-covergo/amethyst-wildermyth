@@ -180,7 +180,9 @@ public class WildermythActivity extends AppCompatActivity {
 
     private void updateFooter() {
         String account = WmCloud.accountName();
-        footer.setText(account == null ? "Not signed in" : "Steam: " + account);
+        // FMOD's licence requires this credit line in the app.
+        footer.setText((account == null ? "Not signed in" : "Steam: " + account)
+                + "  ·  Audio: FMOD Studio by Firelight Technologies Pty Ltd.");
     }
 
     /** While copying or downloading: screen stays on, and a foreground service keeps going if it is turned off. */
