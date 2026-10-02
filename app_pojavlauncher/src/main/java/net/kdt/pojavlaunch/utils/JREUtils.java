@@ -18,7 +18,6 @@ import android.content.*;
 import android.os.Build;
 import android.system.*;
 import android.util.*;
-import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -406,7 +405,6 @@ public class JREUtils {
         }
 
         userArgs.addAll(JVMArgs);
-        activity.runOnUiThread(() -> Toast.makeText(activity, activity.getString(R.string.autoram_info_msg,LauncherPreferences.PREF_RAM_ALLOCATION), Toast.LENGTH_SHORT).show());
         System.out.println(JVMArgs);
 
         initJavaRuntime(runtimeHome);
