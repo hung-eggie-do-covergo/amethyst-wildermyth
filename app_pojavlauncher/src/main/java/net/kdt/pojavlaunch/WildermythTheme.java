@@ -28,6 +28,8 @@ final class WildermythTheme {
     final Typeface font, fontBold;
     final Bitmap logo, vignette;
     private final Bitmap buttonUp, buttonOver, buttonDown;
+    /** Drawn once per state; every screen change builds new buttons. */
+    private final Bitmap[] parchment = new Bitmap[3];
 
     WildermythTheme(Context ctx, File game) {
         this.ctx = ctx;
@@ -52,9 +54,9 @@ final class WildermythTheme {
         b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
         b.setTextColor(new ColorStateList(new int[][]{{android.R.attr.state_focused}, {}}, new int[]{Color.WHITE, TEXT}));
         StateListDrawable d = new StateListDrawable();
-        d.addState(new int[]{android.R.attr.state_pressed}, face(buttonDown, 0xFF5A3B22, ACCENT));
-        d.addState(new int[]{android.R.attr.state_focused}, focused(face(buttonOver, 0xFF6E4A2A, ACCENT)));
-        d.addState(new int[]{}, face(buttonUp, 0xFF3A281A, 0xFF7A5A3A));
+        d.addState(new int[]{android.R.attr.state_pressed}, face(buttonDown, 0));
+        d.addState(new int[]{android.R.attr.state_focused}, focused(face(buttonOver, 1)));
+        d.addState(new int[]{}, face(buttonUp, 2));
         b.setBackground(d);
         b.setStateListAnimator(null);
         b.setPadding(dp(32), dp(10), dp(32), dp(10));
@@ -91,15 +93,12 @@ final class WildermythTheme {
         return Math.round(v * ctx.getResources().getDisplayMetrics().density);
     }
 
-    private Drawable face(Bitmap art, int fill, int border) {
+    /** The game's art for a button state, or our parchment in its place: pressed, focused, idle. */
+    private Drawable face(Bitmap art, int state) {
         if (art != null) return new BitmapDrawable(ctx.getResources(), art);
-        if (fill != 0) return new BitmapDrawable(ctx.getResources(), parchment(lighten(fill, 2.1f))); // paper, not bark
-        // Drawn stand-in for the parchment button: a lit top edge and a rust border, like the game's.
-        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                new int[]{lighten(fill, 1.35f), fill, darken(fill, 0.75f)});
-        g.setCornerRadius(dp(6));
-        g.setStroke(dp(2), border);
-        return g;
+        if (parchment[state] == null) // paper, not bark: the fills are lifted from the game's button browns
+            parchment[state] = parchment(lighten(new int[]{0xFF5A3B22, 0xFF6E4A2A, 0xFF3A281A}[state], 2.1f));
+        return new BitmapDrawable(ctx.getResources(), parchment[state]);
     }
 
     /** Our own parchment strip: speckled paper with rust bands near each end, echoing the game's buttons. */
@@ -124,8 +123,6 @@ final class WildermythTheme {
     private static int lighten(int c, float f) {
         return Color.rgb(Math.min(255, (int) (Color.red(c) * f)), Math.min(255, (int) (Color.green(c) * f)), Math.min(255, (int) (Color.blue(c) * f)));
     }
-
-    private static int darken(int c, float f) { return lighten(c, f); }
 
     private static Typeface typeface(File f, Typeface fallback) {
         try {

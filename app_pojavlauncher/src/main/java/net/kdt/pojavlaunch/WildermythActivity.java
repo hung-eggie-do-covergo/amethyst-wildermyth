@@ -1,12 +1,13 @@
 package net.kdt.pojavlaunch;
 
 import android.app.ActivityManager;
-import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.database.Cursor;
 import android.net.Uri;
+import android.provider.DocumentsContract;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
@@ -238,30 +239,44 @@ public class WildermythActivity extends AppCompatActivity {
             try {
                 File tmp = new File(game.getPath() + ".partial");
                 deleteTree(tmp);
-                long[] copied = {0};
-                copyTree(src, tmp, copied);
+                long[] copied = {0, 0}; // bytes, last UI update
+                copyTree(tree, DocumentsContract.getTreeDocumentId(tree), tmp, copied);
                 deleteTree(game);
                 if (!tmp.renameTo(game)) throw new IllegalStateException("could not move files into place");
                 runOnUiThread(() -> { transfer(false); next(); });
-            } catch (Exception e) { android.util.Log.e("Wildermyth", "sync step failed", e);
-                runOnUiThread(() -> transfer(false));
-                runOnUiThread(() -> show("Copying failed: " + describe(e), "Try again", this::showInstall));
+            } catch (Exception e) { android.util.Log.e("Wildermyth", "copy failed", e);
+                runOnUiThread(() -> { transfer(false); show("Copying failed: " + describe(e), "Try again", this::showInstall); });
             }
         });
     }
 
-    private void copyTree(DocumentFile dir, File out, long[] copied) throws Exception {
+    /**
+     * Copies a picked folder. One provider query per folder: DocumentFile asks again for every name and
+     * type, which for ~42k files cost more than the copying.
+     */
+    private void copyTree(Uri tree, String dirId, File out, long[] copied) throws Exception {
         if (!out.isDirectory() && !out.mkdirs()) throw new IllegalStateException("cannot create " + out);
-        for (DocumentFile f : dir.listFiles()) {
-            File dest = new File(out, f.getName());
-            if (f.isDirectory()) { copyTree(f, dest, copied); continue; }
-            try (InputStream in = getContentResolver().openInputStream(f.getUri()); OutputStream o = new FileOutputStream(dest)) {
-                byte[] buf = new byte[1 << 16];
-                for (int n; (n = in.read(buf)) > 0; ) { o.write(buf, 0, n); copied[0] += n; }
+        Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, dirId);
+        String[] cols = {DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                DocumentsContract.Document.COLUMN_MIME_TYPE};
+        try (Cursor c = getContentResolver().query(children, cols, null, null, null)) {
+            if (c == null) throw new IllegalStateException("cannot list " + out.getName());
+            while (c.moveToNext()) {
+                String id = c.getString(0);
+                File dest = new File(out, c.getString(1));
+                if (DocumentsContract.Document.MIME_TYPE_DIR.equals(c.getString(2))) { copyTree(tree, id, dest, copied); continue; }
+                try (InputStream in = getContentResolver().openInputStream(DocumentsContract.buildDocumentUriUsingTree(tree, id));
+                     OutputStream o = new FileOutputStream(dest)) {
+                    byte[] buf = new byte[1 << 16];
+                    for (int n; (n = in.read(buf)) > 0; ) { o.write(buf, 0, n); copied[0] += n; }
+                }
+                long now = android.os.SystemClock.uptimeMillis();
+                if (now - copied[1] < 250) continue;
+                copied[1] = now;
+                long mb = copied[0] >> 20;
+                // ~2.7 GB for a full install; good enough for a bar, the MB count is exact.
+                runOnUiThread(() -> { status.setText("Copying… " + mb + " MB"); progress(Math.min(99f, mb / 27f)); });
             }
-            long mb = copied[0] >> 20;
-            // ~2.7 GB for a full install; good enough for a bar, the MB count is exact.
-            runOnUiThread(() -> { status.setText("Copying… " + mb + " MB"); progress(Math.min(99f, mb / 27f)); });
         }
     }
 
@@ -325,9 +340,8 @@ public class WildermythActivity extends AppCompatActivity {
                 deleteTree(game);
                 if (!tmp.renameTo(game)) throw new IllegalStateException("could not move files into place");
                 runOnUiThread(() -> { transfer(false); next(); });
-            } catch (Exception e) { android.util.Log.e("Wildermyth", "sync step failed", e);
-                runOnUiThread(() -> transfer(false));
-                runOnUiThread(() -> show("Download failed: " + describe(e), "Try again", this::download, "Back", this::showInstall));
+            } catch (Exception e) { android.util.Log.e("Wildermyth", "download failed", e);
+                runOnUiThread(() -> { transfer(false); show("Download failed: " + describe(e), "Try again", this::download, "Back", this::showInstall); });
             }
         });
     }
@@ -351,8 +365,8 @@ public class WildermythActivity extends AppCompatActivity {
         show("Syncing saves…");
         worker.execute(() -> {
             try {
-                WmCloud.pull(game, false);
-                refreshOwnedDlc();
+                List<Integer> owned = WmCloud.beforePlay(game);
+                if (owned != null) saveOwnedDlc(owned);
                 runOnUiThread(this::launchGame);
             } catch (ConflictException e) { android.util.Log.e("Wildermyth", "sync step failed", e);
                 runOnUiThread(() -> conflict(e.getFiles(), true));
@@ -383,16 +397,11 @@ public class WildermythActivity extends AppCompatActivity {
         });
     }
 
-    /** Asks Steam which DLC the account owns; the last answer is kept for offline play. */
-    private void refreshOwnedDlc() {
-        try {
-            List<Integer> owned = WmCloud.ownedDlc();
-            StringBuilder sb = new StringBuilder();
-            for (Integer id : owned) sb.append(sb.length() == 0 ? "" : ",").append(id);
-            prefs.edit().putString(WildermythLauncher.PREF_OWNED_DLC, sb.toString()).commit();
-        } catch (Exception e) {
-            android.util.Log.w("Wildermyth", "DLC ownership check failed; using the last answer", e);
-        }
+    /** Steam's answer on owned DLC, kept for the game's launch and for offline play. */
+    private void saveOwnedDlc(List<Integer> owned) {
+        StringBuilder sb = new StringBuilder();
+        for (Integer id : owned) sb.append(sb.length() == 0 ? "" : ",").append(id);
+        prefs.edit().putString(WildermythLauncher.PREF_OWNED_DLC, sb.toString()).commit();
     }
 
     private void launchGame() {
@@ -412,18 +421,13 @@ public class WildermythActivity extends AppCompatActivity {
         show("Uploading saves…");
         worker.execute(() -> {
             try {
-                WmCloud.push(game, false);
+                WmCloud.afterPlay(game); // achievements failing there waits for the next session
             } catch (CloudChangedException e) { android.util.Log.e("Wildermyth", "sync step failed", e);
                 runOnUiThread(() -> conflict(java.util.Collections.singletonList("(changed on another device)"), false));
                 return;
             } catch (Exception e) { android.util.Log.e("Wildermyth", "sync step failed", e);
                 runOnUiThread(() -> show("Upload failed. Saves stay here and sync next time.", "Retry", this::afterSession, "Play", this::syncAndPlay));
                 return;
-            }
-            try {
-                WmCloud.syncAchievements(game);
-            } catch (Exception ignored) {
-                // Retried after the next session; saves matter more than achievements.
             }
             prefs.edit().putBoolean(PREF_SESSION, false).commit();
             runOnUiThread(() -> show("All synced.", "Play", this::syncAndPlay, "Close", this::finish));
@@ -460,7 +464,7 @@ public class WildermythActivity extends AppCompatActivity {
         }
     }
 
-        /** A message a person can act on; some exceptions (timeouts, NPEs) carry none. */
+    /** A message a person can act on; some exceptions (timeouts, NPEs) carry none. */
     private static String describe(Throwable e) {
         Throwable root = e;
         while (root.getCause() != null && root.getCause() != root) root = root.getCause();
@@ -522,14 +526,12 @@ public class WildermythActivity extends AppCompatActivity {
 
     private static Bitmap qrBitmap(String url) {
         boolean[][] m = WmCloud.qrMatrix(url);
-        int q = 2, scale = 12, size = (m.length + 2 * q) * scale;
-        Bitmap bmp = Bitmap.createBitmap(size, size, Bitmap.Config.RGB_565);
-        bmp.eraseColor(Color.WHITE);
+        int q = 2, n = m.length + 2 * q; // with a quiet zone
+        int[] px = new int[n * n];
+        java.util.Arrays.fill(px, Color.WHITE);
         for (int y = 0; y < m.length; y++)
-            for (int x = 0; x < m[y].length; x++)
-                if (m[y][x])
-                    for (int dy = 0; dy < scale; dy++)
-                        for (int dx = 0; dx < scale; dx++) bmp.setPixel((x + q) * scale + dx, (y + q) * scale + dy, Color.BLACK);
-        return bmp;
+            for (int x = 0; x < m[y].length; x++) if (m[y][x]) px[(y + q) * n + x + q] = Color.BLACK;
+        Bitmap small = Bitmap.createBitmap(px, n, n, Bitmap.Config.RGB_565);
+        return Bitmap.createScaledBitmap(small, n * 12, n * 12, false); // no filtering: crisp modules
     }
 }
