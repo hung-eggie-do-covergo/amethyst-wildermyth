@@ -1206,10 +1206,11 @@ public class GLFW
     }
 
     public static void glfwSetWindowSize(long window, int width, int height) {
-        internalGetWindow(window).width = width;
-        internalGetWindow(window).height = height;
+        // The surface is always the whole screen; honouring a smaller request made games draw into a corner.
+        internalGetWindow(window).width = mGLFWWindowWidth;
+        internalGetWindow(window).height = mGLFWWindowHeight;
 
-        System.out.println("GLFW: Set size for window " + window + ", width=" + width + ", height=" + height);
+        System.out.println("GLFW: Set size for window " + window + ", width=" + width + ", height=" + height + " (kept at the surface size)");
     }
 
     public static float glfwGetWindowOpacity(@NativeType("GLFWwindow *") long window) {
