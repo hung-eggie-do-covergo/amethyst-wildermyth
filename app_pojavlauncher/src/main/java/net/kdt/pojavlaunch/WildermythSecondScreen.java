@@ -129,7 +129,15 @@ final class WildermythSecondScreen {
                 while (true) {
                     byte[] msg = new byte[in.readInt()];
                     in.readFully(msg);
-                    if (msg[0] == 'F') {
+                    if (msg[0] == 'I') { // a coin image for the map, sent once per kind
+                        int n = msg[1] & 0xFF;
+                        String name = new String(msg, 2, n, StandardCharsets.UTF_8);
+                        ByteBuffer bb = ByteBuffer.wrap(msg, 2 + n, 8);
+                        int w = bb.getInt(), h = bb.getInt();
+                        Bitmap icon = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+                        icon.copyPixelsFromBuffer(ByteBuffer.wrap(msg, 10 + n, w * h * 4));
+                        activity.runOnUiThread(() -> { if (panel != null && panel.map != null) panel.map.icon(name, icon); });
+                    } else if (msg[0] == 'F') {
                         int id = msg[1];
                         Bitmap frame = frame(msg);
                         activity.runOnUiThread(() -> { if (panel != null) panel.frame(id, frame); });
@@ -193,7 +201,7 @@ final class WildermythSecondScreen {
         private View content, idle;
         private SheetHeader header;
         private Button threatsToggle, mapToggle;
-        private WildermythOverviewMap map;
+        WildermythOverviewMap map;
 
         Panel(Context ctx, Display display, WildermythTheme theme) {
             super(ctx, display);

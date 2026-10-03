@@ -32,6 +32,9 @@ final class WildermythOverviewMap extends View {
     private float[] centers = new float[0];
     private JSONArray marks = new JSONArray();
     private float[] frame;
+    /** Coins drawn by the game, by name ("threat:morthagi", "hero:warrior"). */
+    private final java.util.Map<String, android.graphics.Bitmap> icons = new java.util.HashMap<>();
+    private final RectF box = new RectF();
     private final RectF world = new RectF();
     private final Matrix view = new Matrix(), inverse = new Matrix();
     private float zoom = 1, panX, panY;
@@ -41,7 +44,7 @@ final class WildermythOverviewMap extends View {
             outline = new Paint(Paint.ANTI_ALIAS_FLAG), framePaint = new Paint(Paint.ANTI_ALIAS_FLAG),
             markFill = new Paint(Paint.ANTI_ALIAS_FLAG), markRing = new Paint(Paint.ANTI_ALIAS_FLAG),
             count = new Paint(Paint.ANTI_ALIAS_FLAG), label = new Paint(Paint.ANTI_ALIAS_FLAG),
-            labelShadow = new Paint(Paint.ANTI_ALIAS_FLAG);
+            labelShadow = new Paint(Paint.ANTI_ALIAS_FLAG), countShadow = new Paint(Paint.ANTI_ALIAS_FLAG), coinPaint = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
     private final ScaleGestureDetector pinch;
     private final GestureDetector gestures;
 
@@ -64,8 +67,13 @@ final class WildermythOverviewMap extends View {
         markRing.setColor(0xFF15100C);
         markRing.setStrokeWidth(1.5f * d);
         count.setTextAlign(Paint.Align.CENTER);
-        count.setTextSize(12 * d);
         count.setFakeBoldText(true);
+        count.setTextSize(15 * d);
+        count.setColor(0xFFF0E2C8);
+        countShadow.set(count);
+        countShadow.setStyle(Paint.Style.STROKE);
+        countShadow.setStrokeWidth(3 * d);
+        countShadow.setColor(0xFF15100C);
         label.setTextAlign(Paint.Align.CENTER);
         label.setTextSize(12 * d);
         labelShadow.set(label);
@@ -143,6 +151,20 @@ final class WildermythOverviewMap extends View {
         invalidate();
     }
 
+    void icon(String name, android.graphics.Bitmap bitmap) {
+        icons.put(name, bitmap);
+        invalidate();
+    }
+
+    /** Draws coin {@code name} centred on x, y with radius r; false if it hasn't arrived yet. */
+    private boolean coin(Canvas c, String name, float x, float y, float r) {
+        android.graphics.Bitmap b = name == null ? null : icons.get(name);
+        if (b == null) return false;
+        box.set(x - r, y - r, x + r, y + r);
+        c.drawBitmap(b, null, box, coinPaint);
+        return true;
+    }
+
     /** What the player sees ("h"/"p"/"v" per tile) and which tile is selected (-1 for none). */
     void state(JSONObject s) {
         vis = s.optString("vis");
@@ -201,7 +223,7 @@ final class WildermythOverviewMap extends View {
             view.mapPoints(p);
             float x = p[0], y = p[1];
             boolean hostile = k.optInt("x") == 1;
-            if (hostile) { // a site with a threat lurking: what you go out to fight
+            if (hostile && !coin(c, k.optString("tc", null), x, y, r * 2f)) { // a site with a threat lurking
                 markFill.setColor(0xFFC8553D);
                 c.drawCircle(x, y, r, markFill);
                 c.drawCircle(x, y, r, markRing);
@@ -214,13 +236,18 @@ final class WildermythOverviewMap extends View {
                 }
             }
             if (k.has("h")) { // the party: a blue coin with how many heroes are there
-                float hx = x - (hostile ? 2.2f * r : 0), hy = y - (hostile ? 0.6f * r : 0);
-                markFill.setColor(SELECTED);
-                c.drawCircle(hx, hy, r * 1.25f, markFill);
-                c.drawCircle(hx, hy, r * 1.25f, markRing);
-                count.setColor(0xFF15100C);
-                c.drawText(String.valueOf(k.optInt("h")), hx, hy + count.getTextSize() * 0.36f, count);
+                float hx = x - (hostile ? 3.2f * r : 0), hy = y - (hostile ? 0.6f * r : 0);
+                if (!coin(c, k.optString("hc", null), hx, hy, r * 2f)) {
+                    markFill.setColor(SELECTED);
+                    c.drawCircle(hx, hy, r * 1.25f, markFill);
+                    c.drawCircle(hx, hy, r * 1.25f, markRing);
+                }
+                String n = String.valueOf(k.optInt("h"));
+                float ty = hy + count.getTextSize() * 0.36f;
+                c.drawText(n, hx, ty, countShadow); // cream on the coin's dark face, outlined
+                c.drawText(n, hx, ty, count);
             }
+            if (k.has("t") && !hostile && coin(c, k.optString("tc", null), x, y, r * 2f)) continue;
             if (k.has("t") && !hostile) { // a threat on the move (one in a site is that site's red dot)
                 float tx = x, ty = y;
                 Path dmd = new Path();
