@@ -399,12 +399,26 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
     protected void onStart() {
         super.onStart();
         CallbackBridge.nativeSetWindowAttrib(LwjglGlfwKeycode.GLFW_VISIBLE, 1);
+        wildermythBackground(false);
     }
 
     @Override
     protected void onStop() {
         CallbackBridge.nativeSetWindowAttrib(LwjglGlfwKeycode.GLFW_VISIBLE, 0);
+        wildermythBackground(true);
         super.onStop();
+    }
+
+    /** Wildermyth's agent mutes the game while this file exists: GLFW focus never reaches it here. */
+    private void wildermythBackground(boolean background) {
+        if (!getIntent().getBooleanExtra(WildermythLauncher.EXTRA, false)) return;
+        java.io.File flag = new java.io.File(WildermythLauncher.gameDir(this), "wm-background");
+        try {
+            if (background) flag.createNewFile();
+            else flag.delete();
+        } catch (java.io.IOException ignored) {
+            // the game keeps playing in the background; nothing worse
+        }
     }
 
     @Override
