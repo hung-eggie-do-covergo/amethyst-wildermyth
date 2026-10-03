@@ -50,6 +50,8 @@ public class WildermythActivity extends AppCompatActivity {
     static final String EXTRA_PREVIEW_SCREEN = "wm_preview_screen";
     /** Debug: start the installed game with no Steam sign-in or sync, for testing without an account. */
     static final String EXTRA_PLAY_NO_SYNC = "wm_play_no_sync";
+    /** Debug: offer the latest release as an update even if it isn't newer. */
+    static final String EXTRA_UPDATE_TEST = "wm_update_test";
     private boolean testing;
 
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
@@ -74,13 +76,72 @@ public class WildermythActivity extends AppCompatActivity {
         // Test and preview switches exist only in debuggable builds; release ignores them.
         boolean debuggable = (getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0;
         if (debuggable && getIntent().getBooleanExtra(EXTRA_TEST_DOWNLOAD, false)) { testDownload(); return; }
+        WildermythUpdater.pretendOld = debuggable && getIntent().getBooleanExtra(EXTRA_UPDATE_TEST, false);
         if (debuggable && getIntent().getBooleanExtra(EXTRA_PLAY_NO_SYNC, false)) {
             testing = true;
             startActivity(new Intent(this, MainActivity.class).putExtra(WildermythLauncher.EXTRA, true));
             return;
         }
         if (debuggable && getIntent().getBooleanExtra(EXTRA_PREVIEW, false)) { testing = true; preview(getIntent().getStringExtra(EXTRA_PREVIEW_SCREEN)); return; }
-        if (!prefs.getBoolean(PREF_SESSION, false)) next();
+        if (!prefs.getBoolean(PREF_SESSION, false)) checkForUpdateThen(this::next);
+    }
+
+    /** Between sessions only: offers a newer release if there is one, else carries on. */
+    private void checkForUpdateThen(Runnable then) {
+        if (!WildermythUpdater.due(this)) { then.run(); return; }
+        worker.execute(() -> {
+            WildermythUpdater.Update u = null;
+            try {
+                u = WildermythUpdater.check(this);
+            } catch (Exception e) {
+                android.util.Log.w("Wildermyth", "update check failed", e); // offline is fine: play anyway
+            }
+            WildermythUpdater.Update found = u;
+            runOnUiThread(() -> {
+                if (found == null) { then.run(); return; }
+                show("Wildermyth " + found.version + " is available.", "Update", () -> update(found, then), "Not now", then);
+                heading("Update");
+            });
+        });
+    }
+
+    /** Asks for "Install unknown apps" first if Android needs it, then hands over to its installer. */
+    private void installUpdate(java.io.File apk, WildermythUpdater.Update u, Runnable then) {
+        if (!WildermythUpdater.mayInstall(this)) {
+            show("To update, allow this app to install apps: switch it on in the page that opens, then come back.",
+                    "Open settings", () -> {
+                        WildermythUpdater.askToInstall(this);
+                        show("Once it's switched on, install the update.", "Install update", () -> installUpdate(apk, u, then), "Not now", then);
+                    }, "Not now", then);
+            return;
+        }
+        show("Confirm the update in the window Android shows.", "Not now", then);
+        try {
+            WildermythUpdater.install(this, apk, status -> runOnUiThread(() ->
+                    show(WildermythUpdater.why(status), "Try again", () -> installUpdate(apk, u, then), "Not now", then)));
+        } catch (Exception e) {
+            show("The update didn't install: " + describe(e), "Try again", () -> update(u, then), "Not now", then);
+        }
+    }
+
+    private void update(WildermythUpdater.Update u, Runnable then) {
+        show("Downloading " + u.version + "…");
+        progress(0);
+        transfer(true);
+        worker.execute(() -> {
+            try {
+                java.io.File apk = WildermythUpdater.download(this, u, pct -> runOnUiThread(() -> progress(pct)));
+                runOnUiThread(() -> {
+                    transfer(false);
+                    installUpdate(apk, u, then);
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    transfer(false);
+                    show("The download failed: " + describe(e), "Try again", () -> update(u, then), "Not now", then);
+                });
+            }
+        });
     }
 
     @Override
@@ -182,22 +243,27 @@ public class WildermythActivity extends AppCompatActivity {
         footer = text("", 13);
         footer.setAlpha(0.6f);
         root.addView(footer, new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL));
-        if (WildermythSecondScreen.display(this) != null) root.addView(dualScreenToggle(),
-                new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END));
+        LinearLayout settings = new LinearLayout(this); // top right, out of the main flow
+        settings.setOrientation(LinearLayout.VERTICAL);
+        settings.setGravity(Gravity.END);
+        if (WildermythSecondScreen.display(this) != null)
+            settings.addView(toggle("Dual screen", WildermythSecondScreen.PREF, false));
+        settings.addView(toggle("Updates", WildermythUpdater.PREF, true));
+        root.addView(settings, new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END));
         setContentView(root);
         updateFooter();
     }
 
-    /** Only on devices with a second display; read at the next game launch. */
-    private TextView dualScreenToggle() {
+    /** An on/off setting, saved at once; each is read when it next matters (game launch, update check). */
+    private TextView toggle(String name, String pref, boolean byDefault) {
         TextView t = text("", 15);
-        int pad = theme.dp(16);
+        int pad = theme.dp(12);
         t.setPadding(pad, pad, pad, pad);
         t.setFocusable(true);
-        Runnable label = () -> t.setText("Dual screen: " + (prefs.getBoolean(WildermythSecondScreen.PREF, false) ? "On" : "Off"));
+        Runnable label = () -> t.setText(name + ": " + (prefs.getBoolean(pref, byDefault) ? "On" : "Off"));
         label.run();
         t.setOnClickListener(v -> {
-            prefs.edit().putBoolean(WildermythSecondScreen.PREF, !prefs.getBoolean(WildermythSecondScreen.PREF, false)).apply();
+            prefs.edit().putBoolean(pref, !prefs.getBoolean(pref, byDefault)).apply();
             label.run();
         });
         t.setOnFocusChangeListener((v, has) -> t.setTextColor(has ? WildermythTheme.ACCENT : WildermythTheme.TEXT));
