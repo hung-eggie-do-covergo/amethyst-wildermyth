@@ -38,7 +38,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 
 /**
- * The game's own HUD widgets on a second display (dual-screen handhelds). The game agent (dlcagent
+ * The game's own HUD widgets on a second display (dual-screen handhelds). The game agent (gameagent
  * DualScreen) connects to a loopback socket and sends length-prefixed messages: 'J' + JSON state, or
  * 'F' + widget id + width + height + RGBA pixels drawn by the game. Taps go back as JSON lines.
  */
@@ -65,7 +65,7 @@ final class WildermythSecondScreen {
     /** The bar across the top, as the HUD has it; the header and the panel's buttons sit on it. */
     private static final float BAR_H = 0.145f;
     /** Where the header row ends: right of it sit the Threats and log buttons. */
-    private static final float HEADER_END = 0.79f;
+    private static final float HEADER_END = 0.66f;
     static {
         SLOTS[ROSTER] = new float[]{0f, SHEET_TOP, 0.17f, 1f, 0.5f, 0f};
         SLOTS[THREATS] = new float[]{0.8f, SHEET_TOP, 1f, 1f, 0.5f, 0f}; // an overlay, shown on demand
@@ -192,7 +192,8 @@ final class WildermythSecondScreen {
         private final FrameView[] widgets = new FrameView[COUNT];
         private View content, idle;
         private SheetHeader header;
-        private Button threatsToggle;
+        private Button threatsToggle, mapToggle;
+        private WildermythOverviewMap map;
 
         Panel(Context ctx, Display display, WildermythTheme theme) {
             super(ctx, display);
@@ -236,11 +237,20 @@ final class WildermythSecondScreen {
                     header.measure(View.MeasureSpec.makeMeasureSpec(x1 - x0, View.MeasureSpec.EXACTLY),
                             View.MeasureSpec.makeMeasureSpec(y1 - y0, View.MeasureSpec.EXACTLY));
                     header.layout(x0, y0, x1, y1);
-                    int t0 = x1 + theme.dp(8), t1 = getPaddingLeft() + Math.round(SLOTS[CONSOLE_TOGGLE][0] * w) - theme.dp(8);
-                    int bh = theme.dp(44), bt = (y1 - bh) / 2;
-                    threatsToggle.measure(View.MeasureSpec.makeMeasureSpec(t1 - t0, View.MeasureSpec.EXACTLY),
+                    // Map and Threats share the space between the header and the log's button.
+                    int t0 = x1 + theme.dp(8), t2 = getPaddingLeft() + Math.round(SLOTS[CONSOLE_TOGGLE][0] * w) - theme.dp(8);
+                    int t1 = (t0 + t2) / 2 - theme.dp(3), bh = theme.dp(44), bt = (y1 - bh) / 2;
+                    mapToggle.measure(View.MeasureSpec.makeMeasureSpec(t1 - t0, View.MeasureSpec.EXACTLY),
                             View.MeasureSpec.makeMeasureSpec(bh, View.MeasureSpec.EXACTLY));
-                    threatsToggle.layout(t0, bt, t1, bt + bh);
+                    mapToggle.layout(t0, bt, t1, bt + bh);
+                    threatsToggle.measure(View.MeasureSpec.makeMeasureSpec(t2 - t1 - theme.dp(6), View.MeasureSpec.EXACTLY),
+                            View.MeasureSpec.makeMeasureSpec(bh, View.MeasureSpec.EXACTLY));
+                    threatsToggle.layout(t1 + theme.dp(6), bt, t2, bt + bh);
+                    // The map covers everything under the bar.
+                    int top = getPaddingTop() + Math.round(SHEET_TOP * h);
+                    map.measure(View.MeasureSpec.makeMeasureSpec(getWidth(), View.MeasureSpec.EXACTLY),
+                            View.MeasureSpec.makeMeasureSpec(getHeight() - top, View.MeasureSpec.EXACTLY));
+                    map.layout(0, top, getWidth(), getHeight());
                 }
             };
             content.setPadding(pad, pad, pad, pad);
@@ -281,6 +291,24 @@ final class WildermythSecondScreen {
             });
             threatsToggle.setAlpha(0.7f);
             content.addView(threatsToggle);
+            // The overview map: drawn here from the game's tile data, hidden until asked for.
+            map = new WildermythOverviewMap(getContext(), tile -> send("{\"mapTap\":" + tile + "}"));
+            map.setBackgroundColor(WildermythTheme.BG);
+            map.setVisibility(View.GONE);
+            content.addView(map);
+            mapToggle = new Button(getContext());
+            theme.style(mapToggle);
+            mapToggle.setTextSize(16);
+            mapToggle.setPadding(0, 0, 0, 0);
+            mapToggle.setFocusable(false);
+            mapToggle.setText("Map");
+            mapToggle.setAlpha(0.7f);
+            mapToggle.setOnClickListener(v -> {
+                boolean show = map.getVisibility() != View.VISIBLE;
+                map.setVisibility(show ? View.VISIBLE : View.GONE);
+                mapToggle.setAlpha(show ? 1f : 0.7f);
+            });
+            content.addView(mapToggle);
             // The log covers everything else when shown, on an opaque ground; its button stays on top.
             widgets[CONSOLE].setBackgroundColor(WildermythTheme.BG);
             widgets[CONSOLE].bringToFront();
@@ -305,6 +333,14 @@ final class WildermythSecondScreen {
         }
 
         void update(JSONObject msg) {
+            if (msg.has("map")) {
+                map.geometry(msg.optJSONObject("map"));
+                return;
+            }
+            if (msg.has("mapState")) {
+                map.state(msg.optJSONObject("mapState"));
+                return;
+            }
             boolean campaign = msg.optBoolean("campaign");
             content.setVisibility(campaign ? View.VISIBLE : View.GONE);
             idle.setVisibility(campaign ? View.GONE : View.VISIBLE);

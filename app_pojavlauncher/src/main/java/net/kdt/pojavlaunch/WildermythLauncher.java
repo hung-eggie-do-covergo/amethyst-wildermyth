@@ -93,7 +93,7 @@ public final class WildermythLauncher {
             int port = WildermythSecondScreen.start(activity, game);
             if (port > 0) args.add("-Dwm.ds.port=" + port);
         }
-        args.add("-javaagent:" + new File(Tools.DIR_DATA, "wildermyth/wm-dlcagent.jar").getAbsolutePath());
+        args.add("-javaagent:" + new File(Tools.DIR_DATA, "wildermyth/wm-gameagent.jar").getAbsolutePath());
         args.add("-cp");
         args.add(cp.toString());
         args.add(MAIN_CLASS);
