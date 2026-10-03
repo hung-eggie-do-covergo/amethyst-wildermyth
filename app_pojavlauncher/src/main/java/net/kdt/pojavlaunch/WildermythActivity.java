@@ -48,6 +48,8 @@ public class WildermythActivity extends AppCompatActivity {
     static final String EXTRA_PREVIEW = "wm_preview";
     /** Which screen the preview draws: synced (default), firstrun, conflict. */
     static final String EXTRA_PREVIEW_SCREEN = "wm_preview_screen";
+    /** Debug: start the installed game with no Steam sign-in or sync, for testing without an account. */
+    static final String EXTRA_PLAY_NO_SYNC = "wm_play_no_sync";
     private boolean testing;
 
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
@@ -72,6 +74,11 @@ public class WildermythActivity extends AppCompatActivity {
         // Test and preview switches exist only in debuggable builds; release ignores them.
         boolean debuggable = (getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0;
         if (debuggable && getIntent().getBooleanExtra(EXTRA_TEST_DOWNLOAD, false)) { testDownload(); return; }
+        if (debuggable && getIntent().getBooleanExtra(EXTRA_PLAY_NO_SYNC, false)) {
+            testing = true;
+            startActivity(new Intent(this, MainActivity.class).putExtra(WildermythLauncher.EXTRA, true));
+            return;
+        }
         if (debuggable && getIntent().getBooleanExtra(EXTRA_PREVIEW, false)) { testing = true; preview(getIntent().getStringExtra(EXTRA_PREVIEW_SCREEN)); return; }
         if (!prefs.getBoolean(PREF_SESSION, false)) next();
     }
@@ -175,8 +182,26 @@ public class WildermythActivity extends AppCompatActivity {
         footer = text("", 13);
         footer.setAlpha(0.6f);
         root.addView(footer, new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL));
+        if (WildermythSecondScreen.display(this) != null) root.addView(dualScreenToggle(),
+                new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END));
         setContentView(root);
         updateFooter();
+    }
+
+    /** Only on devices with a second display; read at the next game launch. */
+    private TextView dualScreenToggle() {
+        TextView t = text("", 15);
+        int pad = theme.dp(16);
+        t.setPadding(pad, pad, pad, pad);
+        t.setFocusable(true);
+        Runnable label = () -> t.setText("Dual screen: " + (prefs.getBoolean(WildermythSecondScreen.PREF, false) ? "On" : "Off"));
+        label.run();
+        t.setOnClickListener(v -> {
+            prefs.edit().putBoolean(WildermythSecondScreen.PREF, !prefs.getBoolean(WildermythSecondScreen.PREF, false)).apply();
+            label.run();
+        });
+        t.setOnFocusChangeListener((v, has) -> t.setTextColor(has ? WildermythTheme.ACCENT : WildermythTheme.TEXT));
+        return t;
     }
 
     private void updateFooter() {

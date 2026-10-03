@@ -84,8 +84,13 @@ public final class WildermythLauncher {
         args.add("-Djava.library.path=" + Tools.lwjglNativesDir + ":" + gdxNatives + ":" + Tools.NATIVE_LIB_DIR);
         args.add("-Dorg.lwjgl.librarypath=" + Tools.lwjglNativesDir);
         // Owned DLC: the game would ask the Steam client, which is not here; the agent answers for it.
-        String owned = activity.getSharedPreferences("wildermyth", Context.MODE_PRIVATE).getString(PREF_OWNED_DLC, "");
-        args.add("-Dwm.ownedDlc=" + owned);
+        android.content.SharedPreferences prefs = activity.getSharedPreferences("wildermyth", Context.MODE_PRIVATE);
+        args.add("-Dwm.ownedDlc=" + prefs.getString(PREF_OWNED_DLC, ""));
+        // Dual-screen mode: the agent streams HUD panels (roster, hero sheet, log) to the second display.
+        if (prefs.getBoolean(WildermythSecondScreen.PREF, false)) {
+            int port = WildermythSecondScreen.start(activity, game);
+            if (port > 0) args.add("-Dwm.ds.port=" + port);
+        }
         args.add("-javaagent:" + new File(Tools.DIR_DATA, "wildermyth/wm-dlcagent.jar").getAbsolutePath());
         args.add("-cp");
         args.add(cp.toString());
