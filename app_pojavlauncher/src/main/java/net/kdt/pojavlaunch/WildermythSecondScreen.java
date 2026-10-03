@@ -51,7 +51,7 @@ final class WildermythSecondScreen {
     private static final int SELECTED = 0xFF55B5F5;
     /** Widget ids shared with the agent. */
     private static final int ROSTER = 0, CONSOLE = 1, CONSOLE_TOGGLE = 2, THREATS = 3, SHEET = 4, STATUS = 5,
-            PLACE = 6, BAR = 7, COUNT = 8;
+            PLACE = 6, BAR = 7, UNDO = 8, RETREAT = 9, HOVER = 10, COUNT = 11;
     /** The HUD's gold for small headings, and the header's name colour. */
     private static final int GOLD = 0xFFF1CB81;
     /**
@@ -74,6 +74,9 @@ final class WildermythSecondScreen {
         SLOTS[PLACE] = new float[]{0.18f, SHEET_TOP, 1f, 1f, 0.5f, 0f}; // in the sheet's place while a tile is selected
         SLOTS[BAR] = new float[]{0f, 0f, 1f, BAR_H, 0f, 0f}; // the game's top bar, edge to edge (see onLayout)
         SLOTS[CONSOLE] = new float[]{0f, 0f, 1f, 1f, 0.5f, 0f};
+        SLOTS[HOVER] = new float[]{0.18f, SHEET_TOP, 1f, 1f, 0.5f, 0f}; // battle "Info": what the cursor points at
+        SLOTS[UNDO] = new float[]{0f, 0f, 0f, 0f, 0.5f, 0.5f}; // on the bar in battle, where Map is (see onLayout)
+        SLOTS[RETREAT] = new float[]{0f, 0f, 0f, 0f, 0.5f, 0.5f};
         SLOTS[CONSOLE_TOGGLE] = new float[]{0.95f, 0f, 1f, BAR_H * 0.85f, 0.5f, 0.5f}; // on the bar
     }
 
@@ -201,6 +204,8 @@ final class WildermythSecondScreen {
         private View content, idle;
         private SheetHeader header;
         private Button threatsToggle, mapToggle;
+        /** In battle: false shows Info (the hovered thing's card), true the hero sheet. */
+        private boolean battle, sheetMode;
         WildermythOverviewMap map;
 
         Panel(Context ctx, Display display, WildermythTheme theme) {
@@ -251,6 +256,21 @@ final class WildermythSecondScreen {
                     mapToggle.measure(View.MeasureSpec.makeMeasureSpec(t1 - t0, View.MeasureSpec.EXACTLY),
                             View.MeasureSpec.makeMeasureSpec(bh, View.MeasureSpec.EXACTLY));
                     mapToggle.layout(t0, bt, t1, bt + bh);
+                    // In battle the game's Undo and Retreat buttons head the roster column; the roster moves down.
+                    int rx0 = getPaddingLeft(), rx1 = getPaddingLeft() + Math.round(SLOTS[ROSTER][2] * w);
+                    int ry = getPaddingTop() + Math.round(SHEET_TOP * h), um = (rx0 + rx1) / 2;
+                    for (int[] u : new int[][]{{UNDO, rx0, um - theme.dp(2)}, {RETREAT, um + theme.dp(2), rx1}}) {
+                        widgets[u[0]].align(0.5f, 0.5f);
+                        widgets[u[0]].measure(View.MeasureSpec.makeMeasureSpec(u[2] - u[1], View.MeasureSpec.EXACTLY),
+                                View.MeasureSpec.makeMeasureSpec(battle ? bh : 0, View.MeasureSpec.EXACTLY));
+                        widgets[u[0]].layout(u[1], ry, u[2], ry + (battle ? bh : 0));
+                    }
+                    if (battle) {
+                        int top = ry + bh + theme.dp(8);
+                        widgets[ROSTER].measure(View.MeasureSpec.makeMeasureSpec(rx1 - rx0, View.MeasureSpec.EXACTLY),
+                                View.MeasureSpec.makeMeasureSpec(getHeight() - getPaddingBottom() - top, View.MeasureSpec.EXACTLY));
+                        widgets[ROSTER].layout(rx0, top, rx1, getHeight() - getPaddingBottom());
+                    }
                     threatsToggle.measure(View.MeasureSpec.makeMeasureSpec(t2 - t1 - theme.dp(6), View.MeasureSpec.EXACTLY),
                             View.MeasureSpec.makeMeasureSpec(bh, View.MeasureSpec.EXACTLY));
                     threatsToggle.layout(t1 + theme.dp(6), bt, t2, bt + bh);
@@ -282,6 +302,7 @@ final class WildermythSecondScreen {
             widgets[STATUS].solid = true; // the game's parchment is see-through; nothing should show under it
             widgets[STATUS].setElevation(theme.dp(12));
             widgets[STATUS].bringToFront();
+            widgets[HOVER].setVisibility(View.GONE);
             // Threats: hidden until asked for, then a column over the sheet's right edge.
             widgets[THREATS].setBackgroundColor(0xE6000000 | (WildermythTheme.BG & 0xFFFFFF));
             widgets[THREATS].setVisibility(View.GONE);
@@ -312,6 +333,15 @@ final class WildermythSecondScreen {
             mapToggle.setText("Map");
             mapToggle.setAlpha(0.7f);
             mapToggle.setOnClickListener(v -> {
+                if (battle) { // in battle this button switches the bottom screen between Info and the hero sheet
+                    sheetMode = !sheetMode;
+                    mapToggle.setText(sheetMode ? "Info" : "Sheet");
+                    boolean info = !sheetMode;
+                    widgets[SHEET].setVisibility(info ? View.INVISIBLE : View.VISIBLE);
+                    widgets[HOVER].setVisibility(info ? View.VISIBLE : View.GONE);
+                    header.setTabs(!info);
+                    return;
+                }
                 boolean show = map.getVisibility() != View.VISIBLE;
                 map.setVisibility(show ? View.VISIBLE : View.GONE);
                 mapToggle.setAlpha(show ? 1f : 0.7f);
@@ -350,15 +380,23 @@ final class WildermythSecondScreen {
                 return;
             }
             boolean campaign = msg.optBoolean("campaign");
+            boolean battle = msg.optBoolean("battle"); // no overview map in a battle; Info or Sheet instead
+            if (battle && map.getVisibility() == View.VISIBLE) mapToggle.performClick();
+            if (this.battle != battle) content.requestLayout();
+            this.battle = battle;
+            mapToggle.setText(battle ? (sheetMode ? "Info" : "Sheet") : "Map");
+            mapToggle.setVisibility(View.VISIBLE);
             content.setVisibility(campaign ? View.VISIBLE : View.GONE);
             idle.setVisibility(campaign ? View.GONE : View.VISIBLE);
             // INVISIBLE, not GONE: the box keeps its size, which the agent sizes the log to.
             widgets[CONSOLE].setVisibility(msg.optBoolean("console", true) ? View.VISIBLE : View.INVISIBLE);
-            widgets[ROSTER].highlight(msg.optJSONArray("selectedCard"));
             JSONObject sheet = msg.optJSONObject("sheet");
             boolean place = sheet != null && sheet.has("place");
             header.show(sheet);
-            widgets[SHEET].setVisibility(sheet == null || place ? View.INVISIBLE : View.VISIBLE); // keeps its size
+            boolean info = battle && !sheetMode;
+            widgets[SHEET].setVisibility(sheet == null || place || info ? View.INVISIBLE : View.VISIBLE); // keeps its size
+            widgets[HOVER].setVisibility(info ? View.VISIBLE : View.GONE);
+            header.setTabs(!info);
             widgets[PLACE].setVisibility(place ? View.VISIBLE : View.GONE);
             if (place) header.showStatus(false);
             if (sheet != null) sheetView = sheet.optInt("view");
@@ -380,13 +418,6 @@ final class WildermythSecondScreen {
         private final Rect src = new Rect();
         private float lastY;
         private boolean dragged;
-        private float[] mark;
-        private final Paint outline = new Paint(Paint.ANTI_ALIAS_FLAG);
-        {
-            outline.setStyle(Paint.Style.STROKE);
-            outline.setStrokeWidth(getResources().getDisplayMetrics().density * 3);
-            outline.setColor(SELECTED);
-        }
 
         FrameView(Context ctx, int id) {
             super(ctx);
@@ -404,6 +435,11 @@ final class WildermythSecondScreen {
         /** How far the roster is scrolled down, in panel pixels. */
         private float scrollY;
 
+        /** Cards, which can be taller than their box. */
+        private boolean scrolls() {
+            return id == HOVER || id == PLACE || id == STATUS;
+        }
+
         private void scrollBy(float dy) {
             scrollY -= dy;
             invalidate();
@@ -411,6 +447,7 @@ final class WildermythSecondScreen {
 
         private float scale() {
             if (id == ROSTER) return Math.min(1.5f, getWidth() / (float) src.width()); // full column width, any height
+            if (scrolls()) return getWidth() / (float) src.width(); // cards: full width, scroll when tall
             if (id == BAR) return Math.max(getWidth() / (float) src.width(), getHeight() / (float) src.height()); // texture: fill
             return Math.min(MAX_SCALE, Math.min(getWidth() / (float) src.width(), getHeight() / (float) src.height()));
         }
@@ -452,18 +489,9 @@ final class WildermythSecondScreen {
             alignY = y;
         }
 
-        /** Outlines part of the image, e.g. the selected hero's card: fractions {l, t, r, b}, or null. */
-        void highlight(JSONArray f) {
-            float[] next = f == null || f.length() < 4 ? null
-                    : new float[]{(float) f.optDouble(0), (float) f.optDouble(1), (float) f.optDouble(2), (float) f.optDouble(3)};
-            if (!java.util.Arrays.equals(next, mark)) {
-                mark = next;
-                invalidate();
-            }
-        }
-
         void show(Bitmap b) {
             Bitmap old = frame;
+            if (scrolls() && (b == null || old == null || b.getHeight() != old.getHeight())) scrollY = 0; // a new card
             frame = b;
             if (b == null) dst.setEmpty();
             else if (id == BAR) src.set(opaqueBounds(b)); // the art has transparent margins: fill with the art itself
@@ -483,29 +511,26 @@ final class WildermythSecondScreen {
             if (frame == null) return;
             float scale = scale(), w = src.width() * scale, h = src.height() * scale;
             float x = (getWidth() - w) * alignX, y = (getHeight() - h) * alignY;
-            if (id == ROSTER) y = -(scrollY = Math.max(0, Math.min(scrollY, h - getHeight()))); // taller than the screen: scrolls
+            if (id == ROSTER || scrolls()) y = -(scrollY = Math.max(0, Math.min(scrollY, h - getHeight()))); // taller: scrolls
             dst.set(x, y, x + w, y + h);
-            if (solid) c.drawRect(dst, backing);
+            if (solid && !dst.isEmpty()) c.drawRect(dst, backing);
             c.drawBitmap(frame, src, dst, paint);
-            if (mark != null) {
-                // Left and right from the image: the game draws inactive cards off their reported slot.
-                int row = Math.round((mark[1] + mark[3]) / 2 * frame.getHeight());
-                int[] px = new int[frame.getWidth()];
-                frame.getPixels(px, 0, px.length, 0, Math.max(0, Math.min(frame.getHeight() - 1, row)), px.length, 1);
-                int x0 = 0, x1 = px.length - 1;
-                while (x0 < x1 && (px[x0] >>> 24) < 128) x0++;
-                while (x1 > x0 && (px[x1] >>> 24) < 128) x1--;
-                float sx = dst.width() / frame.getWidth(), pad = outline.getStrokeWidth();
-                c.drawRoundRect(dst.left + x0 * sx - pad, dst.top + mark[1] * dst.height() - pad,
-                        dst.left + (x1 + 1) * sx + pad, dst.top + mark[3] * dst.height() + pad, pad * 2, pad * 2, outline);
-            }
         }
 
         @Override
         public boolean onTouchEvent(MotionEvent e) {
-            if (id == BAR) return false; // just art: the header's buttons sit on it
-            if (id == STATUS) { // just a card to read: any tap closes it
-                if (e.getActionMasked() == MotionEvent.ACTION_UP) panel.header.showStatus(false);
+            if (id == BAR) return false; // just art
+            if (scrolls()) { // cards: drag to scroll; a tap closes the hero's card
+                if (e.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                    lastY = e.getY();
+                    dragged = false;
+                } else if (e.getActionMasked() == MotionEvent.ACTION_MOVE && (dragged || Math.abs(e.getY() - lastY) > slop)) {
+                    dragged = true;
+                    scrollBy(e.getY() - lastY);
+                    lastY = e.getY();
+                } else if (e.getActionMasked() == MotionEvent.ACTION_UP && !dragged && id == STATUS) {
+                    panel.header.showStatus(false);
+                }
                 return true;
             }
             if (id == SHEET) { // the sheet gets the whole gesture: its lists scroll, its entries press
@@ -643,6 +668,14 @@ final class WildermythSecondScreen {
             list.show();
         }
 
+        private boolean tabsAllowed = true;
+
+        /** The tab dropdown only means something while the sheet is on screen. */
+        void setTabs(boolean allowed) {
+            tabsAllowed = allowed;
+            if (!allowed) tab.setVisibility(GONE);
+        }
+
         /** Opens or closes the hero's card (the HUD's selection tooltip) over the sheet. */
         void showStatus(boolean open) {
             panel.widgets[STATUS].setVisibility(open ? VISIBLE : GONE);
@@ -671,8 +704,8 @@ final class WildermythSecondScreen {
             tab.setText((labels == null ? "" : labels.optString(sheet.optInt("tab"))) + "  ▾");
             // In a detail, Back takes the dropdown's place: tabs are switched from the list.
             boolean detail = sheet.optInt("view") == 1;
-            back.setVisibility(detail ? VISIBLE : GONE);
-            tab.setVisibility(detail ? GONE : VISIBLE);
+            back.setVisibility(detail && tabsAllowed ? VISIBLE : GONE);
+            tab.setVisibility(detail || !tabsAllowed ? GONE : VISIBLE);
         }
     }
 }
