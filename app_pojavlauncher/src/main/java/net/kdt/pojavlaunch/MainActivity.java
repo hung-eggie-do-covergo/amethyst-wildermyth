@@ -244,6 +244,8 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
 
             boolean wildermyth = getIntent().getBooleanExtra(WildermythLauncher.EXTRA, false);
             if (wildermyth) {
+                // Full resolution: the UI is text-heavy, and the second screen enlarges its glyphs further.
+                LauncherPreferences.PREF_SCALE_FACTOR = 1f;
                 // Wildermyth asks GLFW for a 4.5 core context; only Zink provides one here.
                 Tools.LOCAL_RENDERER = "opengles3_desktopgl_zink_kopper";
                 isInputStackCall = true;

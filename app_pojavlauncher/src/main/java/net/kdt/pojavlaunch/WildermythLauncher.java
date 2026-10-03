@@ -83,6 +83,8 @@ public final class WildermythLauncher {
         String gdxNatives = new File(Tools.DIR_DATA, "wildermyth").getAbsolutePath();
         args.add("-Djava.library.path=" + Tools.lwjglNativesDir + ":" + gdxNatives + ":" + Tools.NATIVE_LIB_DIR);
         args.add("-Dorg.lwjgl.librarypath=" + Tools.lwjglNativesDir);
+        // In controller mode the game captures the cursor; on a touchscreen taps must still click.
+        args.add("-Dglfwstub.touchNeverGrabs=true");
         // Owned DLC: the game would ask the Steam client, which is not here; the agent answers for it.
         android.content.SharedPreferences prefs = activity.getSharedPreferences("wildermyth", Context.MODE_PRIVATE);
         args.add("-Dwm.ownedDlc=" + prefs.getString(PREF_OWNED_DLC, ""));

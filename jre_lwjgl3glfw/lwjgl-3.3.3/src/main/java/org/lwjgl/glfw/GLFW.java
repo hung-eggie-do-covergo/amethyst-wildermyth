@@ -1326,7 +1326,8 @@ public class GLFW
         if (mode == GLFW_CURSOR) {
             switch (value) {
                 case GLFW_CURSOR_DISABLED:
-                    CallbackBridge.nativeSetGrabbing(true);
+                    // A game that hides its cursor for a pad (Wildermyth) must keep touches as clicks, not a camera.
+                    CallbackBridge.nativeSetGrabbing(!Boolean.getBoolean("glfwstub.touchNeverGrabs"));
                     break;
                 default: CallbackBridge.nativeSetGrabbing(false);
             }

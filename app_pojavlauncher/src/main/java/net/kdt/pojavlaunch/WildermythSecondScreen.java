@@ -51,31 +51,36 @@ final class WildermythSecondScreen {
     private static final int SELECTED = 0xFF55B5F5;
     /** Widget ids shared with the agent. */
     private static final int ROSTER = 0, CONSOLE = 1, CONSOLE_TOGGLE = 2, THREATS = 3, SHEET = 4, STATUS = 5,
-            PLACE = 6, COUNT = 7;
+            PLACE = 6, BAR = 7, COUNT = 8;
+    /** The HUD's gold for small headings, and the header's name colour. */
+    private static final int GOLD = 0xFFF1CB81;
     /**
      * Where each widget goes, as fractions {left, top, right, bottom, horizontal align, vertical align}:
      * heroes down the left as in the HUD, the selected hero's sheet (or the selected place's card) beside
      * them. Threats, the hero's card and the log are overlays, shown on demand.
      */
     private static final float[][] SLOTS = new float[COUNT][];
-    /** The sheet's header row (name, tab dropdown, Back) takes the top of the space right of the roster. */
-    private static final float SHEET_TOP = 0.1f;
+    /** Where the panels start, under the bar with the header row (name, tab dropdown, Back). */
+    private static final float SHEET_TOP = 0.16f;
+    /** The bar across the top, as the HUD has it; the header and the panel's buttons sit on it. */
+    private static final float BAR_H = 0.145f;
     /** Where the header row ends: right of it sit the Threats and log buttons. */
     private static final float HEADER_END = 0.79f;
     static {
-        SLOTS[ROSTER] = new float[]{0f, 0f, 0.17f, 1f, 0.5f, 0f};
+        SLOTS[ROSTER] = new float[]{0f, SHEET_TOP, 0.17f, 1f, 0.5f, 0f};
         SLOTS[THREATS] = new float[]{0.8f, SHEET_TOP, 1f, 1f, 0.5f, 0f}; // an overlay, shown on demand
         SLOTS[SHEET] = new float[]{0.18f, SHEET_TOP, 1f, 1f, 0.5f, 0f};
-        SLOTS[STATUS] = new float[]{0.18f, SHEET_TOP, 1f, 1f, 0.5f, 0f}; // an overlay, from the hero's name
+        SLOTS[STATUS] = new float[]{0.01f, BAR_H, 0.6f, 1f, 0f, 0f}; // a dropdown under the hero's name
         SLOTS[PLACE] = new float[]{0.18f, SHEET_TOP, 1f, 1f, 0.5f, 0f}; // in the sheet's place while a tile is selected
+        SLOTS[BAR] = new float[]{0f, 0f, 1f, BAR_H, 0f, 0f}; // the game's top bar, edge to edge (see onLayout)
         SLOTS[CONSOLE] = new float[]{0f, 0f, 1f, 1f, 0.5f, 0f};
-        SLOTS[CONSOLE_TOGGLE] = new float[]{0.95f, 0f, 1f, 0.055f, 1f, 0f};
+        SLOTS[CONSOLE_TOGGLE] = new float[]{0.95f, 0f, 1f, BAR_H * 0.85f, 0.5f, 0.5f}; // on the bar
     }
 
     private final Activity activity;
     private final ServerSocket server;
     private volatile OutputStream out;
-    private volatile String consoleSize, sheetSize;
+    private volatile String consoleSize, sheetSize, barSize;
     private Panel panel;
 
     private WildermythSecondScreen(Activity activity) throws Exception {
@@ -118,6 +123,9 @@ final class WildermythSecondScreen {
                 out = s.getOutputStream();
                 if (consoleSize != null) send(consoleSize); // the boxes were laid out before the game connected
                 if (sheetSize != null) send(sheetSize);
+                if (barSize != null) send(barSize);
+                lastVisible = -1;
+                activity.runOnUiThread(this::reportVisible);
                 while (true) {
                     byte[] msg = new byte[in.readInt()];
                     in.readFully(msg);
@@ -151,6 +159,19 @@ final class WildermythSecondScreen {
     /** 0 list, 1 detail: which sheet column the agent is streaming (it tells us in its state). */
     private volatile int sheetView;
 
+    private int lastVisible = -1;
+
+    /** Tells the agent which widgets are on screen, so it only spends frames on those. */
+    private void reportVisible() {
+        if (panel == null || panel.widgets[0] == null) return;
+        int bits = 0;
+        for (int id = 0; id < COUNT; id++)
+            if (panel.widgets[id].isShown() || id == CONSOLE_TOGGLE || id == BAR) bits |= 1 << id;
+        if (bits == lastVisible) return;
+        lastVisible = bits;
+        send("{\"visible\":" + bits + "}");
+    }
+
     private void send(String json) {
         OutputStream o = out;
         if (o == null) return;
@@ -183,6 +204,10 @@ final class WildermythSecondScreen {
             super.onCreate(state);
             // Never take focus: the pad must keep driving the game on the main screen.
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            // A dialog's default background is inset: drop it, so the panel (and the bar) reach the edges.
+            getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(WildermythTheme.BG));
+            getWindow().getDecorView().setPadding(0, 0, 0, 0);
+            getWindow().setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT);
             FrameLayout root = new FrameLayout(getContext());
             root.setBackground(theme.background());
             int pad = theme.dp(12);
@@ -196,26 +221,38 @@ final class WildermythSecondScreen {
                         widgets[id].align(f[4], f[5]);
                         int x0 = getPaddingLeft() + Math.round(f[0] * w), y0 = getPaddingTop() + Math.round(f[1] * h);
                         int x1 = getPaddingLeft() + Math.round(f[2] * w), y1 = getPaddingTop() + Math.round(f[3] * h);
+                        if (id == BAR) { // edge to edge, like the HUD's bar, padding or not
+                            x0 = 0;
+                            y0 = 0;
+                            x1 = getWidth();
+                        }
                         widgets[id].measure(View.MeasureSpec.makeMeasureSpec(x1 - x0, View.MeasureSpec.EXACTLY),
                                 View.MeasureSpec.makeMeasureSpec(y1 - y0, View.MeasureSpec.EXACTLY));
                         widgets[id].layout(x0, y0, x1, y1);
                     }
-                    int x0 = getPaddingLeft() + Math.round(SLOTS[SHEET][0] * w), y1 = getPaddingTop() + Math.round(SHEET_TOP * h);
-                    int x1 = getPaddingLeft() + Math.round(HEADER_END * w);
+                    // On the bar, centred on its art (whose torn lower edge takes the bottom ~15%).
+                    int barBottom = widgets[BAR].getBottom(), y0 = 0, y1 = Math.round(barBottom * 0.85f);
+                    int x0 = getPaddingLeft(), x1 = getPaddingLeft() + Math.round(HEADER_END * w);
                     header.measure(View.MeasureSpec.makeMeasureSpec(x1 - x0, View.MeasureSpec.EXACTLY),
-                            View.MeasureSpec.makeMeasureSpec(y1 - getPaddingTop(), View.MeasureSpec.EXACTLY));
-                    header.layout(x0, getPaddingTop(), x1, y1);
+                            View.MeasureSpec.makeMeasureSpec(y1 - y0, View.MeasureSpec.EXACTLY));
+                    header.layout(x0, y0, x1, y1);
                     int t0 = x1 + theme.dp(8), t1 = getPaddingLeft() + Math.round(SLOTS[CONSOLE_TOGGLE][0] * w) - theme.dp(8);
+                    int bh = theme.dp(44), bt = (y1 - bh) / 2;
                     threatsToggle.measure(View.MeasureSpec.makeMeasureSpec(t1 - t0, View.MeasureSpec.EXACTLY),
-                            View.MeasureSpec.makeMeasureSpec(y1 - getPaddingTop(), View.MeasureSpec.EXACTLY));
-                    threatsToggle.layout(t0, getPaddingTop(), t1, y1);
+                            View.MeasureSpec.makeMeasureSpec(bh, View.MeasureSpec.EXACTLY));
+                    threatsToggle.layout(t0, bt, t1, bt + bh);
                 }
             };
             content.setPadding(pad, pad, pad, pad);
+            content.setClipToPadding(false); // the bar draws into the padding, edge to edge
             for (int id = 0; id < COUNT; id++) {
                 widgets[id] = new FrameView(getContext(), id);
                 content.addView(widgets[id]);
             }
+            widgets[BAR].addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+                barSize = "{\"barSize\":[" + (r - l) + "," + (b - t) + "]}";
+                send(barSize);
+            });
             header = new SheetHeader(getContext(), theme);
             content.addView(header);
             widgets[SHEET].addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
@@ -223,8 +260,9 @@ final class WildermythSecondScreen {
                 send(sheetSize);
             });
             // The hero's card (the HUD's selection tooltip): opened by tapping the name, closed by tapping it.
-            widgets[STATUS].setBackgroundColor(0xCC000000);
             widgets[STATUS].setVisibility(View.GONE);
+            widgets[STATUS].solid = true; // the game's parchment is see-through; nothing should show under it
+            widgets[STATUS].setElevation(theme.dp(12));
             widgets[STATUS].bringToFront();
             // Threats: hidden until asked for, then a column over the sheet's right edge.
             widgets[THREATS].setBackgroundColor(0xE6000000 | (WildermythTheme.BG & 0xFFFFFF));
@@ -309,12 +347,55 @@ final class WildermythSecondScreen {
         FrameView(Context ctx, int id) {
             super(ctx);
             this.id = id;
+            getViewTreeObserver().addOnGlobalLayoutListener(WildermythSecondScreen.this::reportVisible);
+        }
+
+        /** Draw the image over a solid ground, the colour of the game's parchment. */
+        boolean solid;
+        private final Paint backing = new Paint();
+        {
+            backing.setColor(0xFFE6DCC4);
+        }
+
+        /** How far the roster is scrolled down, in panel pixels. */
+        private float scrollY;
+
+        private void scrollBy(float dy) {
+            scrollY -= dy;
+            invalidate();
         }
 
         private float scale() {
+            if (id == ROSTER) return Math.min(1.5f, getWidth() / (float) src.width()); // full column width, any height
+            if (id == BAR) return Math.max(getWidth() / (float) src.width(), getHeight() / (float) src.height()); // texture: fill
             return Math.min(MAX_SCALE, Math.min(getWidth() / (float) src.width(), getHeight() / (float) src.height()));
         }
 
+
+        private final Rect opaque = new Rect();
+        private int opaqueW, opaqueH;
+
+        /** The part of {@code b} that isn't (nearly) transparent; worked out once per image size. */
+        private Rect opaqueBounds(Bitmap b) {
+            if (b.getWidth() == opaqueW && b.getHeight() == opaqueH) return opaque;
+            int w = b.getWidth(), h = b.getHeight();
+            int[] px = new int[w * h];
+            b.getPixels(px, 0, w, 0, 0, w, h);
+            int x0 = w, y0 = h, x1 = -1, y1 = -1;
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                    if ((px[y * w + x] >>> 24) > 200) {
+                        x0 = Math.min(x0, x);
+                        x1 = Math.max(x1, x);
+                        y0 = Math.min(y0, y);
+                        y1 = Math.max(y1, y);
+                    }
+            if (x1 < 0) opaque.set(0, 0, w, h);
+            else opaque.set(x0, y0, x1 + 1, y1 + 1);
+            opaqueW = w;
+            opaqueH = h;
+            return opaque;
+        }
 
         private float clamp(float f) {
             return Math.max(0f, Math.min(1f, f));
@@ -341,9 +422,16 @@ final class WildermythSecondScreen {
             Bitmap old = frame;
             frame = b;
             if (b == null) dst.setEmpty();
+            else if (id == BAR) src.set(opaqueBounds(b)); // the art has transparent margins: fill with the art itself
             else src.set(0, 0, b.getWidth(), b.getHeight());
             invalidate();
             if (old != null && old != b) old.recycle();
+        }
+
+        @Override
+        protected void onVisibilityChanged(View changed, int visibility) {
+            super.onVisibilityChanged(changed, visibility);
+            post(WildermythSecondScreen.this::reportVisible);
         }
 
         @Override
@@ -351,7 +439,9 @@ final class WildermythSecondScreen {
             if (frame == null) return;
             float scale = scale(), w = src.width() * scale, h = src.height() * scale;
             float x = (getWidth() - w) * alignX, y = (getHeight() - h) * alignY;
+            if (id == ROSTER) y = -(scrollY = Math.max(0, Math.min(scrollY, h - getHeight()))); // taller than the screen: scrolls
             dst.set(x, y, x + w, y + h);
+            if (solid) c.drawRect(dst, backing);
             c.drawBitmap(frame, src, dst, paint);
             if (mark != null) {
                 // Left and right from the image: the game draws inactive cards off their reported slot.
@@ -369,6 +459,7 @@ final class WildermythSecondScreen {
 
         @Override
         public boolean onTouchEvent(MotionEvent e) {
+            if (id == BAR) return false; // just art: the header's buttons sit on it
             if (id == STATUS) { // just a card to read: any tap closes it
                 if (e.getActionMasked() == MotionEvent.ACTION_UP) panel.header.showStatus(false);
                 return true;
@@ -395,10 +486,11 @@ final class WildermythSecondScreen {
                     lastY = e.getY();
                     dragged = false;
                     break;
-                case MotionEvent.ACTION_MOVE: // only the log scrolls; elsewhere a drag is just a sloppy tap
-                    if (id == CONSOLE && dst.height() > 0 && (dragged || Math.abs(e.getY() - lastY) > slop)) {
+                case MotionEvent.ACTION_MOVE: // the log scrolls in the game, the roster here; elsewhere: a sloppy tap
+                    if ((id == CONSOLE || id == ROSTER) && dst.height() > 0 && (dragged || Math.abs(e.getY() - lastY) > slop)) {
                         dragged = true;
-                        send(String.format(Locale.US, "{\"scroll\":[%.5f]}", (e.getY() - lastY) / dst.height()));
+                        if (id == CONSOLE) send(String.format(Locale.US, "{\"scroll\":[%.5f]}", (e.getY() - lastY) / dst.height()));
+                        else scrollBy(e.getY() - lastY);
                         lastY = e.getY();
                     }
                     break;
@@ -415,7 +507,7 @@ final class WildermythSecondScreen {
     /** One row over the sheet: hero name, then a dropdown for the tab, or Back while a detail is open. */
     private final class SheetHeader extends LinearLayout {
         private final WildermythTheme theme;
-        private final TextView name;
+        private final TextView kind, name;
         private final Button tab, back;
         private JSONArray labels;
 
@@ -423,9 +515,15 @@ final class WildermythSecondScreen {
             super(ctx);
             this.theme = theme;
             setGravity(Gravity.CENTER_VERTICAL);
+            kind = new TextView(ctx); // small caps over the name, as the HUD labels things
+            kind.setTypeface(theme.fontBold);
+            kind.setTextSize(11);
+            kind.setLetterSpacing(0.15f);
+            kind.setAllCaps(true);
+            kind.setTextColor(GOLD);
             name = new TextView(ctx);
             name.setTypeface(theme.fontBold);
-            name.setTextSize(24);
+            name.setTextSize(20);
             name.setTextColor(WildermythTheme.TEXT);
             name.setSingleLine(true);
             name.setOnClickListener(v -> showStatus(panel.widgets[STATUS].getVisibility() != VISIBLE));
@@ -443,15 +541,21 @@ final class WildermythSecondScreen {
             bg.addState(new int[]{android.R.attr.state_activated}, open);
             bg.addState(new int[]{}, closed);
             name.setBackground(bg);
-            name.setPadding(theme.dp(10), theme.dp(2), theme.dp(10), theme.dp(2));
-            addView(name, new LayoutParams(0, -2, 1));
+            name.setPadding(theme.dp(10), 0, theme.dp(10), 0);
+            LinearLayout title = new LinearLayout(ctx);
+            title.setOrientation(VERTICAL);
+            kind.setPadding(theme.dp(11), 0, 0, 0);
+            title.addView(kind);
+            title.addView(name, new LayoutParams(-2, -2));
+            setPadding(theme.dp(4), 0, 0, 0);
+            addView(title, new LayoutParams(0, -2, 1));
             tab = button(this::pickTab);
-            LayoutParams tp = new LayoutParams(theme.dp(150), -1);
+            LayoutParams tp = new LayoutParams(theme.dp(150), theme.dp(44));
             tp.leftMargin = theme.dp(24); // apart from the name
             addView(tab, tp);
             back = button(() -> send("{\"sheetView\":0}"));
             back.setText("Back");
-            LayoutParams bp = new LayoutParams(theme.dp(150), -1);
+            LayoutParams bp = new LayoutParams(theme.dp(150), theme.dp(44));
             bp.leftMargin = theme.dp(24);
             addView(back, bp);
             setVisibility(INVISIBLE);
@@ -507,16 +611,16 @@ final class WildermythSecondScreen {
         void show(JSONObject sheet) {
             setVisibility(sheet == null ? INVISIBLE : VISIBLE);
             if (sheet == null) return;
-            if (sheet.has("place")) { // a tile, site or threat: what it is; its card below has its name
+            if (sheet.has("place")) { // a tile, site or threat: what it is, and its name
+                kind.setText(sheet.optString("place"));
                 name.setEnabled(false);
-                name.setText(sheet.optString("place"));
-                name.setTextColor(SELECTED);
+                name.setText(sheet.optString("placeName"));
                 tab.setVisibility(GONE);
                 back.setVisibility(GONE);
                 return;
             }
+            kind.setText("Hero");
             name.setEnabled(true);
-            name.setTextColor(WildermythTheme.TEXT); // blue is for a selected place; a hero has the roster outline
             heroName = sheet.optString("name");
             name.setText(heroName + (name.isActivated() ? "  ▴" : "  ▾"));
             labels = sheet.optJSONArray("tabs");
