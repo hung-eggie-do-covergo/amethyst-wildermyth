@@ -29,9 +29,7 @@ import java.util.function.IntConsumer;
  */
 final class WildermythUpdater {
     static final String PREF = "wm_auto_update";
-    private static final String PREF_LAST_CHECK = "wm_update_checked";
     private static final String LATEST = "https://api.github.com/repos/hung-eggie-do-covergo/wildermyth-android/releases/latest";
-    private static final long EVERY_MS = 6 * 3600_000L;
     private static final String ACTION = "dev.eggnet.wildermyth.UPDATE_STATUS";
 
     /** A release newer than this app. */
@@ -48,10 +46,9 @@ final class WildermythUpdater {
 
     private WildermythUpdater() {}
 
-    /** Whether to look now: on, and not looked in the last few hours. */
+    /** Whether to look: every time the launcher opens between sessions, unless turned off. */
     static boolean due(Context ctx) {
-        android.content.SharedPreferences p = ctx.getSharedPreferences("wildermyth", Context.MODE_PRIVATE);
-        return pretendOld || p.getBoolean(PREF, true) && System.currentTimeMillis() - p.getLong(PREF_LAST_CHECK, 0) > EVERY_MS;
+        return pretendOld || ctx.getSharedPreferences("wildermyth", Context.MODE_PRIVATE).getBoolean(PREF, true);
     }
 
     /** The latest release if it is newer than this app, else null. Blocking: call off the UI thread. */
@@ -59,8 +56,6 @@ final class WildermythUpdater {
     static boolean pretendOld;
 
     static Update check(Context ctx) throws Exception {
-        ctx.getSharedPreferences("wildermyth", Context.MODE_PRIVATE).edit()
-                .putLong(PREF_LAST_CHECK, System.currentTimeMillis()).apply();
         HttpURLConnection c = open(LATEST, "application/vnd.github+json");
         JSONObject release;
         try (InputStream in = c.getInputStream(); Scanner s = new Scanner(in, "UTF-8").useDelimiter("\\A")) {
