@@ -217,7 +217,7 @@ final class WildermythSecondScreen {
         protected void onCreate(Bundle state) {
             super.onCreate(state);
             // Never take focus: the pad must keep driving the game on the main screen.
-            getWindow().addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+            getWindow().addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE); // no keep-screen-on: it kept the device awake, game and sound running, after the power button
             // A dialog's default background is inset: drop it, so the panel (and the bar) reach the edges.
             getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(WildermythTheme.BG));
             getWindow().getDecorView().setPadding(0, 0, 0, 0);
