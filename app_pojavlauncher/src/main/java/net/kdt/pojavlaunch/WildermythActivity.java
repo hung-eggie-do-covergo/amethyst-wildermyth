@@ -60,6 +60,7 @@ public class WildermythActivity extends AppCompatActivity {
     private SharedPreferences prefs;
     private TextView heading, status, footer, more;
     private ImageView morePrompt;
+    private View logoView;
     /** The buttons and the Settings link: under the message, or alone on the bottom screen in dual-screen mode. */
     private LinearLayout controls, column;
     private android.app.Presentation bottom;
@@ -231,6 +232,8 @@ public class WildermythActivity extends AppCompatActivity {
     /** Side by side on the wide top screen; stacked on the small bottom one, and in Settings. */
     private void orientButtons() {
         buttons.setOrientation(bottom != null || inSettings ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
+        // One screen holds Settings' stack only without the logo above it.
+        if (logoView != null) logoView.setVisibility(inSettings && bottom == null ? View.GONE : View.VISIBLE);
     }
 
 
@@ -375,6 +378,7 @@ public class WildermythActivity extends AppCompatActivity {
             logo.setImageBitmap(theme.logo);
             logo.setAdjustViewBounds(true);
             col.addView(logo, new LinearLayout.LayoutParams(theme.dp(280), -2));
+            logoView = logo;
         } else {
             LinearLayout header = new LinearLayout(this);
             header.setGravity(Gravity.CENTER);
@@ -392,6 +396,7 @@ public class WildermythActivity extends AppCompatActivity {
             // Same width as the campfire on the right, so the title (not title + icon) is centred.
             header.addView(new View(this), new LinearLayout.LayoutParams(theme.dp(96 - 14), 1));
             col.addView(header);
+            logoView = header;
         }
         heading = text("", 24);
         heading.setTypeface(theme.fontBold);
