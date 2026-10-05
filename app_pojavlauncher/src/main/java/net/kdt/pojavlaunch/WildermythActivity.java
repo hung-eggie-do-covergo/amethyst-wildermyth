@@ -62,7 +62,7 @@ public class WildermythActivity extends AppCompatActivity {
     /** The buttons and the Settings link: under the message, or alone on the bottom screen in dual-screen mode. */
     private LinearLayout controls, column;
     private android.app.Presentation bottom;
-    private boolean inSettings, started;
+    private boolean inSettings, started, confirmDown;
     /** Settings' Back, for the pad's back button too. */
     private Runnable leaveSettings;
     /** A newer release, once the background check finds one. */
@@ -118,11 +118,25 @@ public class WildermythActivity extends AppCompatActivity {
     private void refreshMore() {
         boolean idle = buttons.getChildCount() > 0 && !inSettings && !updating;
         more.setVisibility(idle ? View.VISIBLE : View.GONE);
-        more.setText(available == null ? "Settings" : "Settings  ·  Update available");
+        String label = available == null ? "Settings" : "Settings  ·  Update available";
+        if (!more.isFocused()) {
+            more.setText(label);
+            return;
+        }
+        // The A prompt right after the words; a compound drawable would sit at the far edge of the full-width link.
+        android.text.SpannableString s = new android.text.SpannableString(label + "  A");
+        s.setSpan(new android.text.style.ImageSpan(theme.promptA(), android.text.style.ImageSpan.ALIGN_CENTER),
+                s.length() - 1, s.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        more.setText(s);
     }
 
     /** Version, update, and the two switches; Back returns to the screen it was opened from. */
     private void showSettings(Runnable back) {
+        showSettings(back, 0);
+    }
+
+    /** {@code focus}: the button to leave the pad on, so flipping a switch keeps your place. */
+    private void showSettings(Runnable back, int focus) {
         long code = 0;
         try {
             code = WildermythUpdater.installedVersionCode(this);
@@ -141,26 +155,30 @@ public class WildermythActivity extends AppCompatActivity {
             });
         });
         boolean ds = WildermythSecondScreen.display(this) != null;
+        int dsAt = buttons.getChildCount();
         if (ds) addButton(switchLabel("Dual screen", WildermythSecondScreen.PREF, false), () -> {
             flip(WildermythSecondScreen.PREF, false);
             placeControls();
-            showSettings(back);
+            showSettings(back, dsAt);
         });
+        int autoAt = buttons.getChildCount();
         addButton(switchLabel("Auto launch", PREF_AUTO_LAUNCH, false), () -> {
             flip(PREF_AUTO_LAUNCH, false);
-            showSettings(back);
+            showSettings(back, autoAt);
         });
+        int updatesAt = buttons.getChildCount();
         addButton(switchLabel("Updates", WildermythUpdater.PREF, true), () -> {
             flip(WildermythUpdater.PREF, true);
-            showSettings(back);
+            showSettings(back, updatesAt);
         });
         leaveSettings = () -> {
             inSettings = false;
             back.run();
+            focus(more); // back where Settings was opened from
         };
         addButton("Back", leaveSettings);
         theme.backButton((Button) buttons.getChildAt(buttons.getChildCount() - 1));
-        focusFirst();
+        focus(buttons.getChildAt(Math.min(focus, buttons.getChildCount() - 1)));
         refreshMore();
     }
 
@@ -205,9 +223,12 @@ public class WildermythActivity extends AppCompatActivity {
     }
 
     private void focusFirst() {
-        View first = buttons.getChildAt(0);
-        if (bottom != null) first.requestFocusFromTouch(); // see dispatchKeyEvent
-        else first.requestFocus();
+        focus(buttons.getChildAt(0));
+    }
+
+    private void focus(View v) {
+        if (bottom != null) v.requestFocusFromTouch(); // see dispatchKeyEvent
+        else v.requestFocus();
     }
 
     private FrameLayout bottomRoot() {
@@ -312,9 +333,12 @@ public class WildermythActivity extends AppCompatActivity {
         if (more.getVisibility() == View.VISIBLE) order.add(more);
         int at = order.indexOf(controls.findFocus());
         if (e.getAction() != android.view.KeyEvent.ACTION_DOWN) {
-            if (step == 0 && !order.isEmpty()) order.get(Math.max(at, 0)).performClick(); // nothing focused yet: the first
+            // Only a press that started here: the A that opened the app from a frontend lets go in this window.
+            if (step == 0 && confirmDown && !order.isEmpty()) order.get(Math.max(at, 0)).performClick(); // unfocused: the first
+            if (step == 0) confirmDown = false;
             return true;
         }
+        if (step == 0) confirmDown = true;
         if (order.isEmpty()) return true;
         int next = at < 0 ? 0 : Math.max(0, Math.min(order.size() - 1, at + step));
         // FromTouch: that window stays in touch mode, where a plain requestFocus is refused.
@@ -402,11 +426,10 @@ public class WildermythActivity extends AppCompatActivity {
         more.setPadding(pad, pad, pad, pad);
         more.setFocusable(true);
         more.setOnClickListener(v -> openSettings());
-        more.setCompoundDrawablePadding(theme.dp(8));
         if (android.os.Build.VERSION.SDK_INT >= 26) more.setDefaultFocusHighlightEnabled(false); // gold text + A show focus
         more.setOnFocusChangeListener((v, has) -> {
             more.setTextColor(has ? WildermythTheme.ACCENT : WildermythTheme.TEXT);
-            more.setCompoundDrawablesRelative(null, null, has ? theme.promptA() : null, null);
+            refreshMore();
         });
         if (controls != null && controls.getParent() != null) ((android.view.ViewGroup) controls.getParent()).removeView(controls);
         controls = new LinearLayout(this);
