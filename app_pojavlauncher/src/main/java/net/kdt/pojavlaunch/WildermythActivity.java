@@ -46,6 +46,8 @@ public class WildermythActivity extends AppCompatActivity {
     static final String EXTRA_TEST_DOWNLOAD = "wm_test_download";
     /** Debug: draw the screen with sample content only, to check the look. */
     static final String EXTRA_PREVIEW = "wm_preview";
+    /** Straight from opening the app into the game, skipping the Ready screen. */
+    private static final String PREF_AUTO_LAUNCH = "wm_auto_launch";
     /** Which screen the preview draws: synced (default), firstrun, conflict. */
     static final String EXTRA_PREVIEW_SCREEN = "wm_preview_screen";
     /** Debug: start the installed game with no Steam sign-in or sync, for testing without an account. */
@@ -119,10 +121,6 @@ public class WildermythActivity extends AppCompatActivity {
         more.setText(available == null ? "Settings" : "Settings  ·  Update available");
     }
 
-    private static String versionOf(long code) {
-        return "v0." + (code - 10_000_000); // 1000000N: v0.N
-    }
-
     /** Version, update, and the two switches; Back returns to the screen it was opened from. */
     private void showSettings(Runnable back) {
         long code = 0;
@@ -132,7 +130,7 @@ public class WildermythActivity extends AppCompatActivity {
             // the line just loses its number
         }
         inSettings = true;
-        show("Version " + versionOf(code) + (available == null ? "" : ". " + available.version + " is out."));
+        show("Version " + WildermythUpdater.tag(code) + (available == null ? "" : ". " + available.version + " is out."));
         heading("Settings");
         if (available != null) addButton("Update to " + available.version, () -> {
             inSettings = false;
@@ -146,6 +144,10 @@ public class WildermythActivity extends AppCompatActivity {
         if (ds) addButton(switchLabel("Dual screen", WildermythSecondScreen.PREF, false), () -> {
             flip(WildermythSecondScreen.PREF, false);
             placeControls();
+            showSettings(back);
+        });
+        addButton(switchLabel("Auto launch", PREF_AUTO_LAUNCH, false), () -> {
+            flip(PREF_AUTO_LAUNCH, false);
             showSettings(back);
         });
         addButton(switchLabel("Updates", WildermythUpdater.PREF, true), () -> {
@@ -464,7 +466,8 @@ public class WildermythActivity extends AppCompatActivity {
         updateFooter();
         if (!new File(game, "wildermyth.jar").isFile()) showInstall();
         else if (!WmCloud.isLoggedIn()) showLogin();
-        else syncAndPlay();
+        else if (prefs.getBoolean(PREF_AUTO_LAUNCH, false)) syncAndPlay();
+        else show("Ready to play.", "Play", this::syncAndPlay, "Close", this::finish); // a stop for Settings
     }
 
     private void showInstall() {

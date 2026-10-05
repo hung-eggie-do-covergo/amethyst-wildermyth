@@ -72,10 +72,17 @@ final class WildermythUpdater {
         return null;
     }
 
-    /** Release tags are v0.N; the app's version code is 1000000N (see app build.gradle). */
+    /** Release tags are v0.N or v0.N.P; the app's version code is 10000000 + 100N + P (see app build.gradle). */
     static int versionCode(String tag) {
-        java.util.regex.Matcher m = java.util.regex.Pattern.compile("^v0\\.(\\d+)$").matcher(tag == null ? "" : tag);
-        return m.find() ? 10_000_000 + Integer.parseInt(m.group(1)) : -1;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("^v0\\.(\\d+)(?:\\.(\\d+))?$").matcher(tag == null ? "" : tag);
+        if (!m.find()) return -1;
+        return 10_000_000 + 100 * Integer.parseInt(m.group(1)) + (m.group(2) == null ? 0 : Integer.parseInt(m.group(2)));
+    }
+
+    /** The tag for a version code, the inverse of {@link #versionCode}. */
+    static String tag(long code) {
+        long n = (code - 10_000_000) / 100, p = (code - 10_000_000) % 100;
+        return "v0." + n + (p > 0 ? "." + p : "");
     }
 
     @SuppressWarnings("deprecation")
