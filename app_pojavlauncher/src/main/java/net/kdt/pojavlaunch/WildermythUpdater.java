@@ -79,7 +79,7 @@ final class WildermythUpdater {
     }
 
     @SuppressWarnings("deprecation")
-    private static long installedVersionCode(Context ctx) throws Exception {
+    static long installedVersionCode(Context ctx) throws Exception {
         PackageInfo info = ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0);
         return Build.VERSION.SDK_INT >= 28 ? info.getLongVersionCode() : info.versionCode;
     }

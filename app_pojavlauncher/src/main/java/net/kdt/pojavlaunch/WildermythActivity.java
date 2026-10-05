@@ -56,7 +56,19 @@ public class WildermythActivity extends AppCompatActivity {
 
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private SharedPreferences prefs;
-    private TextView heading, status, footer;
+    private TextView heading, status, footer, more;
+    /** The buttons and the Settings link: under the message, or alone on the bottom screen in dual-screen mode. */
+    private LinearLayout controls, column;
+    private android.app.Presentation bottom;
+    private boolean inSettings, started;
+    /** Settings' Back, for the pad's back button too. */
+    private Runnable leaveSettings;
+    /** A newer release, once the background check finds one. */
+    private WildermythUpdater.Update available;
+    /** Re-shows the current screen; the update flow returns there on "Not now". */
+    private Runnable screen;
+    private String screenHeading;
+    private boolean updating;
     private ImageView qr;
     private ProgressBar progress;
     private LinearLayout buttons;
@@ -82,28 +94,129 @@ public class WildermythActivity extends AppCompatActivity {
             startActivity(new Intent(this, MainActivity.class).putExtra(WildermythLauncher.EXTRA, true));
             return;
         }
+        checkForUpdate();
         if (debuggable && getIntent().getBooleanExtra(EXTRA_PREVIEW, false)) { testing = true; preview(getIntent().getStringExtra(EXTRA_PREVIEW_SCREEN)); return; }
-        if (!prefs.getBoolean(PREF_SESSION, false)) checkForUpdateThen(this::next);
+        if (!prefs.getBoolean(PREF_SESSION, false)) next();
     }
 
-    /** Between sessions only: offers a newer release if there is one, else carries on. */
-    private void checkForUpdateThen(Runnable then) {
-        if (!WildermythUpdater.due(this)) { then.run(); return; }
-        worker.execute(() -> {
-            WildermythUpdater.Update u = null;
+    /** In the background, so play never waits on GitHub; a find shows on the Settings link. */
+    private void checkForUpdate() {
+        if (!WildermythUpdater.due(this)) return;
+        new Thread(() -> {
             try {
-                u = WildermythUpdater.check(this);
+                WildermythUpdater.Update u = WildermythUpdater.check(this);
+                runOnUiThread(() -> { available = u; refreshMore(); });
             } catch (Exception e) {
                 android.util.Log.w("Wildermyth", "update check failed", e); // offline is fine: play anyway
             }
-            WildermythUpdater.Update found = u;
-            runOnUiThread(() -> {
-                if (found == null) { then.run(); return; }
-                show("Wildermyth " + found.version + " is available.", "Update", () -> update(found, then), "Not now", then);
-                heading("Update");
+        }, "wm-update-check").start();
+    }
+
+    /** The Settings link, only while the screen waits on the player; it flags an update. */
+    private void refreshMore() {
+        boolean idle = buttons.getChildCount() > 0 && !inSettings && !updating;
+        more.setVisibility(idle ? View.VISIBLE : View.GONE);
+        more.setText(available == null ? "Settings" : "Settings  ·  Update available");
+    }
+
+    private static String versionOf(long code) {
+        return "v0." + (code - 10_000_000); // 1000000N: v0.N
+    }
+
+    /** Version, update, and the two switches; Back returns to the screen it was opened from. */
+    private void showSettings(Runnable back) {
+        long code = 0;
+        try {
+            code = WildermythUpdater.installedVersionCode(this);
+        } catch (Exception ignored) {
+            // the line just loses its number
+        }
+        inSettings = true;
+        show("Version " + versionOf(code) + (available == null ? "" : ". " + available.version + " is out."));
+        heading("Settings");
+        if (available != null) addButton("Update to " + available.version, () -> {
+            inSettings = false;
+            updating = true;
+            update(available, () -> {
+                updating = false;
+                back.run();
             });
         });
+        boolean ds = WildermythSecondScreen.display(this) != null;
+        if (ds) addButton(switchLabel("Dual screen", WildermythSecondScreen.PREF, false), () -> {
+            flip(WildermythSecondScreen.PREF, false);
+            placeControls();
+            showSettings(back);
+        });
+        addButton(switchLabel("Updates", WildermythUpdater.PREF, true), () -> {
+            flip(WildermythUpdater.PREF, true);
+            showSettings(back);
+        });
+        leaveSettings = () -> {
+            inSettings = false;
+            back.run();
+        };
+        addButton("Back", leaveSettings);
+        theme.backButton((Button) buttons.getChildAt(buttons.getChildCount() - 1));
+        focusFirst();
+        refreshMore();
     }
+
+    private String switchLabel(String name, String pref, boolean byDefault) {
+        return name + ": " + (prefs.getBoolean(pref, byDefault) ? "On" : "Off");
+    }
+
+    /** Saved at once; each is read when it next matters (game launch, update check). */
+    private void flip(String pref, boolean byDefault) {
+        prefs.edit().putBoolean(pref, !prefs.getBoolean(pref, byDefault)).apply();
+    }
+
+    /** Settings from whatever screen is up, coming back to it after. */
+    private void openSettings() {
+        Runnable back = screen;
+        String h = screenHeading;
+        showSettings(() -> {
+            back.run();
+            if (h != null) heading(h);
+        });
+    }
+
+    /** In dual-screen mode the controls go to the bottom screen, for touch; the pad still drives them. */
+    private void placeControls() {
+        android.view.Display d = WildermythSecondScreen.display(this);
+        boolean ds = d != null && started && prefs.getBoolean(WildermythSecondScreen.PREF, false);
+        if (controls.getParent() != null) ((android.view.ViewGroup) controls.getParent()).removeView(controls);
+        if (!ds && bottom != null) {
+            bottom.dismiss();
+            bottom = null;
+        }
+        if (ds && bottom == null) {
+            bottom = new android.app.Presentation(this, d);
+            FrameLayout root = new FrameLayout(bottom.getContext());
+            root.setBackground(theme.background());
+            bottom.setContentView(root);
+            bottom.show();
+        }
+        if (ds) bottomRoot().addView(controls, new FrameLayout.LayoutParams(-2, -2, Gravity.CENTER));
+        else column.addView(controls);
+        orientButtons();
+    }
+
+    private void focusFirst() {
+        View first = buttons.getChildAt(0);
+        if (bottom != null) first.requestFocusFromTouch(); // see dispatchKeyEvent
+        else first.requestFocus();
+    }
+
+    private FrameLayout bottomRoot() {
+        return (FrameLayout) ((android.view.ViewGroup) bottom.findViewById(android.R.id.content)).getChildAt(0);
+    }
+
+    /** Side by side on the wide top screen; stacked on the small bottom one, and in Settings. */
+    private void orientButtons() {
+        buttons.setOrientation(bottom != null || inSettings ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
+    }
+
 
     /** Asks for "Install unknown apps" first if Android needs it, then hands over to its installer. */
     private void installUpdate(java.io.File apk, WildermythUpdater.Update u, Runnable then) {
@@ -150,6 +263,61 @@ public class WildermythActivity extends AppCompatActivity {
         if (testing) return;
         // Back from the game (or relaunched after it crashed): upload before anything else.
         if (prefs.getBoolean(PREF_SESSION, false) && !gameRunning()) afterSession();
+    }
+
+    @Override
+    @SuppressWarnings("deprecation")
+    public void onBackPressed() {
+        if (inSettings) leaveSettings.run();
+        else super.onBackPressed();
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        started = true;
+        if (controls != null) placeControls();
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        started = false; // the game's own panel takes the bottom screen
+        if (controls != null) placeControls();
+    }
+
+    /**
+     * On the bottom screen the controls sit in a window without key focus, so the pad's keys never reach
+     * them: move focus and press buttons there by hand.
+     */
+    @Override
+    public boolean dispatchKeyEvent(android.view.KeyEvent e) {
+        if (bottom == null) return super.dispatchKeyEvent(e);
+        int step;
+        switch (e.getKeyCode()) {
+            case android.view.KeyEvent.KEYCODE_DPAD_UP:
+            case android.view.KeyEvent.KEYCODE_DPAD_LEFT: step = -1; break;
+            case android.view.KeyEvent.KEYCODE_DPAD_DOWN:
+            case android.view.KeyEvent.KEYCODE_DPAD_RIGHT: step = 1; break;
+            case android.view.KeyEvent.KEYCODE_BUTTON_A:
+            case android.view.KeyEvent.KEYCODE_DPAD_CENTER:
+            case android.view.KeyEvent.KEYCODE_ENTER: step = 0; break;
+            default: return super.dispatchKeyEvent(e);
+        }
+        // The controls are one stacked column there: walk it in order.
+        List<View> order = new java.util.ArrayList<>();
+        for (int i = 0; i < buttons.getChildCount(); i++) order.add(buttons.getChildAt(i));
+        if (more.getVisibility() == View.VISIBLE) order.add(more);
+        int at = order.indexOf(controls.findFocus());
+        if (e.getAction() != android.view.KeyEvent.ACTION_DOWN) {
+            if (step == 0 && !order.isEmpty()) order.get(Math.max(at, 0)).performClick(); // nothing focused yet: the first
+            return true;
+        }
+        if (order.isEmpty()) return true;
+        int next = at < 0 ? 0 : Math.max(0, Math.min(order.size() - 1, at + step));
+        // FromTouch: that window stays in touch mode, where a plain requestFocus is refused.
+        if (next != at) order.get(next).requestFocusFromTouch();
+        return true;
     }
 
     @Override
@@ -224,10 +392,27 @@ public class WildermythActivity extends AppCompatActivity {
         qr.setPadding(theme.dp(10), theme.dp(10), theme.dp(10), theme.dp(10));
         qr.setVisibility(View.GONE);
         col.addView(qr, new LinearLayout.LayoutParams(theme.dp(230), theme.dp(230)));
-        buttons = new LinearLayout(this); // side by side: the handheld screen is wide, not tall
+        buttons = new LinearLayout(this);
         buttons.setGravity(Gravity.CENTER_HORIZONTAL);
         buttons.setPadding(0, theme.dp(12), 0, 0);
-        col.addView(buttons);
+        more = text("Settings", 16);
+        int pad = theme.dp(12);
+        more.setPadding(pad, pad, pad, pad);
+        more.setFocusable(true);
+        more.setOnClickListener(v -> openSettings());
+        more.setCompoundDrawablePadding(theme.dp(8));
+        if (android.os.Build.VERSION.SDK_INT >= 26) more.setDefaultFocusHighlightEnabled(false); // gold text + A show focus
+        more.setOnFocusChangeListener((v, has) -> {
+            more.setTextColor(has ? WildermythTheme.ACCENT : WildermythTheme.TEXT);
+            more.setCompoundDrawablesRelative(null, null, has ? theme.promptA() : null, null);
+        });
+        if (controls != null && controls.getParent() != null) ((android.view.ViewGroup) controls.getParent()).removeView(controls);
+        controls = new LinearLayout(this);
+        controls.setOrientation(LinearLayout.VERTICAL);
+        controls.setGravity(Gravity.CENTER_HORIZONTAL);
+        controls.addView(buttons);
+        controls.addView(more);
+        column = col;
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         // With no buttons on screen the pad would focus the scroller and grey out the whole screen.
@@ -243,31 +428,10 @@ public class WildermythActivity extends AppCompatActivity {
         footer = text("", 13);
         footer.setAlpha(0.6f);
         root.addView(footer, new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL));
-        LinearLayout settings = new LinearLayout(this); // top right, out of the main flow
-        settings.setOrientation(LinearLayout.VERTICAL);
-        settings.setGravity(Gravity.END);
-        if (WildermythSecondScreen.display(this) != null)
-            settings.addView(toggle("Dual screen", WildermythSecondScreen.PREF, false));
-        settings.addView(toggle("Updates", WildermythUpdater.PREF, true));
-        root.addView(settings, new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END));
         setContentView(root);
         updateFooter();
-    }
-
-    /** An on/off setting, saved at once; each is read when it next matters (game launch, update check). */
-    private TextView toggle(String name, String pref, boolean byDefault) {
-        TextView t = text("", 15);
-        int pad = theme.dp(12);
-        t.setPadding(pad, pad, pad, pad);
-        t.setFocusable(true);
-        Runnable label = () -> t.setText(name + ": " + (prefs.getBoolean(pref, byDefault) ? "On" : "Off"));
-        label.run();
-        t.setOnClickListener(v -> {
-            prefs.edit().putBoolean(pref, !prefs.getBoolean(pref, byDefault)).apply();
-            label.run();
-        });
-        t.setOnFocusChangeListener((v, has) -> t.setTextColor(has ? WildermythTheme.ACCENT : WildermythTheme.TEXT));
-        return t;
+        placeControls();
+        refreshMore();
     }
 
     private void updateFooter() {
@@ -382,6 +546,8 @@ public class WildermythActivity extends AppCompatActivity {
             game = new File(getCacheDir(), "no-game-installed"); // no art: the first-run look
             buildUi();
             showInstall();
+        } else if ("synced".equals(screen)) {
+            show("All synced.", "Play", () -> {}, "Close", this::finish);
         } else if ("conflict".equals(screen)) {
             conflict(java.util.Arrays.asList("a", "b", "c"), true);
         } else {
@@ -574,10 +740,14 @@ public class WildermythActivity extends AppCompatActivity {
         status.setText(message);
         buttons.removeAllViews();
         progress(-1);
+        screenHeading = null;
+        orientButtons();
+        refreshMore(); // no buttons: busy, no Settings link
     }
 
     /** A title above the current message; call after show(). */
     private void heading(String h) {
+        screenHeading = h;
         heading.setText(h);
         heading.setVisibility(View.VISIBLE);
     }
@@ -585,12 +755,15 @@ public class WildermythActivity extends AppCompatActivity {
     private void show(String message, String label, Runnable action) {
         show(message);
         addButton(label, action);
-        buttons.getChildAt(0).requestFocus(); // the first button takes controller focus
+        focusFirst(); // the first button takes controller focus
+        screen = () -> show(message, label, action);
+        refreshMore();
     }
 
     private void show(String message, String label, Runnable action, String label2, Runnable action2) {
         show(message, label, action);
         addButton(label2, action2);
+        screen = () -> show(message, label, action, label2, action2);
     }
 
     private void addButton(String label, Runnable action) {

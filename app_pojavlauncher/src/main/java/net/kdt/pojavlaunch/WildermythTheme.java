@@ -3,6 +3,7 @@ package net.kdt.pojavlaunch;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
+import android.view.Gravity;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -55,13 +56,65 @@ final class WildermythTheme {
         b.setTextColor(new ColorStateList(new int[][]{{android.R.attr.state_focused}, {}}, new int[]{Color.WHITE, TEXT}));
         StateListDrawable d = new StateListDrawable();
         d.addState(new int[]{android.R.attr.state_pressed}, face(buttonDown, 0));
-        d.addState(new int[]{android.R.attr.state_focused}, focused(face(buttonOver, 1)));
+        // The pad's A prompt on the focused button, as the game marks its own focused cards.
+        d.addState(new int[]{android.R.attr.state_focused}, prompt(focused(face(buttonOver, 1)), "A", Gravity.END));
         d.addState(new int[]{}, face(buttonUp, 2));
         b.setBackground(d);
         b.setStateListAnimator(null);
         b.setPadding(dp(32), dp(10), dp(32), dp(10));
         // The game's "over" art barely differs from "up"; on a pad the focus must be obvious.
         b.setOnFocusChangeListener((v, has) -> v.animate().scaleX(has ? 1.06f : 1f).scaleY(has ? 1.06f : 1f).setDuration(120).start());
+    }
+
+    /** A button the pad's B also presses (Back): its prompt at the start, in every state. */
+    void backButton(Button b) {
+        StateListDrawable d = new StateListDrawable();
+        d.addState(new int[]{android.R.attr.state_pressed}, prompt(face(buttonDown, 0), "B", Gravity.START));
+        d.addState(new int[]{android.R.attr.state_focused},
+                prompt(prompt(focused(face(buttonOver, 1)), "B", Gravity.START), "A", Gravity.END));
+        d.addState(new int[]{}, prompt(face(buttonUp, 2), "B", Gravity.START));
+        b.setBackground(d);
+    }
+
+    /** {@code under} with a controller button glyph on one end. */
+    private Drawable prompt(Drawable under, String letter, int gravity) {
+        if (android.os.Build.VERSION.SDK_INT < 23) return under; // layer gravity: no prompts on 5.x
+        Drawable glyph = disc(letter);
+        android.graphics.drawable.LayerDrawable l = new android.graphics.drawable.LayerDrawable(new Drawable[]{under, glyph});
+        l.setLayerGravity(1, gravity | Gravity.CENTER_VERTICAL);
+        l.setLayerSize(1, dp(30), dp(30));
+        if (gravity == Gravity.END) l.setLayerInsetEnd(1, dp(14));
+        else l.setLayerInsetStart(1, dp(14));
+        return l;
+    }
+
+    /** The A prompt alone, for a focused text link. */
+    Drawable promptA() {
+        Drawable d = disc("A");
+        d.setBounds(0, 0, dp(26), dp(26));
+        return d;
+    }
+
+    /** A lettered disc in the launcher's colours, not any one pad maker's. */
+    private Drawable disc(String letter) {
+        int n = dp(30);
+        float r = n / 2f, ring = dp(2);
+        Bitmap b = Bitmap.createBitmap(n, n, Bitmap.Config.ARGB_8888);
+        android.graphics.Canvas c = new android.graphics.Canvas(b);
+        android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        p.setColor(BG);
+        c.drawCircle(r, r, r - ring / 2, p);
+        p.setStyle(android.graphics.Paint.Style.STROKE);
+        p.setStrokeWidth(ring);
+        p.setColor(ACCENT);
+        c.drawCircle(r, r, r - ring / 2, p);
+        p.setStyle(android.graphics.Paint.Style.FILL);
+        p.setColor(TEXT);
+        p.setTypeface(fontBold);
+        p.setTextSize(n * 0.6f);
+        p.setTextAlign(android.graphics.Paint.Align.CENTER);
+        c.drawText(letter, n / 2f, n / 2f - (p.descent() + p.ascent()) / 2, p);
+        return new BitmapDrawable(ctx.getResources(), b);
     }
 
     private Drawable focused(Drawable face) {
