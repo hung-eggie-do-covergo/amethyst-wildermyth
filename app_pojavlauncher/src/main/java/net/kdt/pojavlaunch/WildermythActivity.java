@@ -59,6 +59,7 @@ public class WildermythActivity extends AppCompatActivity {
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private SharedPreferences prefs;
     private TextView heading, status, footer, more;
+    private ImageView morePrompt;
     /** The buttons and the Settings link: under the message, or alone on the bottom screen in dual-screen mode. */
     private LinearLayout controls, column;
     private android.app.Presentation bottom;
@@ -118,16 +119,8 @@ public class WildermythActivity extends AppCompatActivity {
     private void refreshMore() {
         boolean idle = buttons.getChildCount() > 0 && !inSettings && !updating;
         more.setVisibility(idle ? View.VISIBLE : View.GONE);
-        String label = available == null ? "Settings" : "Settings  ·  Update available";
-        if (!more.isFocused()) {
-            more.setText(label);
-            return;
-        }
-        // The A prompt right after the words; a compound drawable would sit at the far edge of the full-width link.
-        android.text.SpannableString s = new android.text.SpannableString(label + "  A");
-        s.setSpan(new android.text.style.ImageSpan(theme.promptA(), android.text.style.ImageSpan.ALIGN_CENTER),
-                s.length() - 1, s.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        more.setText(s);
+        ((View) more.getParent()).setVisibility(idle ? View.VISIBLE : View.GONE);
+        more.setText(available == null ? "Settings" : "Settings  ·  Update available");
     }
 
     /** Version, update, and the two switches; Back returns to the screen it was opened from. */
@@ -429,14 +422,26 @@ public class WildermythActivity extends AppCompatActivity {
         if (android.os.Build.VERSION.SDK_INT >= 26) more.setDefaultFocusHighlightEnabled(false); // gold text + A show focus
         more.setOnFocusChangeListener((v, has) -> {
             more.setTextColor(has ? WildermythTheme.ACCENT : WildermythTheme.TEXT);
-            refreshMore();
+            morePrompt.setVisibility(has ? View.VISIBLE : View.INVISIBLE);
         });
         if (controls != null && controls.getParent() != null) ((android.view.ViewGroup) controls.getParent()).removeView(controls);
         controls = new LinearLayout(this);
         controls.setOrientation(LinearLayout.VERTICAL);
         controls.setGravity(Gravity.CENTER_HORIZONTAL);
         controls.addView(buttons);
-        controls.addView(more);
+        // The link centred between an empty slot and the A prompt's, so the prompt never shifts the words.
+        LinearLayout moreRow = new LinearLayout(this);
+        moreRow.setGravity(Gravity.CENTER);
+        int prompt = theme.dp(26), gap = 0; // the link's own padding is the gap
+        moreRow.addView(new View(this), new LinearLayout.LayoutParams(prompt + gap, prompt));
+        moreRow.addView(more, new LinearLayout.LayoutParams(-2, -2));
+        morePrompt = new ImageView(this);
+        morePrompt.setImageDrawable(theme.promptA());
+        morePrompt.setVisibility(View.INVISIBLE);
+        LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(prompt, prompt);
+        pp.leftMargin = gap;
+        moreRow.addView(morePrompt, pp);
+        controls.addView(moreRow);
         column = col;
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
