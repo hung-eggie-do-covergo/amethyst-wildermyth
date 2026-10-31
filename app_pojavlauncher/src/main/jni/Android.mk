@@ -68,7 +68,7 @@ LOCAL_C_INCLUDES := $(LOCAL_PATH)/include
 LOCAL_SHARED_LIBRARIES := androidnsbypass
 LOCAL_SRC_FILES := \
 	driver_helper/internal_android_dlopen_hook/turnip/hook.c
-LOCAL_LDFLAGS := -z global # Used so symbol resolving prioritizes this over everything else
+LOCAL_LDFLAGS := -z global -Wl,-z,max-page-size=16384 # global: our symbols resolve first; 16 KB pages: Android 15+
 include $(BUILD_SHARED_LIBRARY)
 #endif
 

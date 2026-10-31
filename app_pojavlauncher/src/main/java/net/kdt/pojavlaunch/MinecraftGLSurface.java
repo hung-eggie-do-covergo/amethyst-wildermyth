@@ -456,6 +456,7 @@ public class MinecraftGLSurface extends View implements GrabListener, DirectGame
             Log.e("MGLSurface", String.format("Impossible resolution : %dx%d", newWidth, newHeight));
             return;
         }
+        boolean resized = newWidth != windowWidth || newHeight != windowHeight;
         windowWidth = newWidth;
         windowHeight = newHeight;
         if(mSurface == null){
@@ -471,6 +472,8 @@ public class MinecraftGLSurface extends View implements GrabListener, DirectGame
             TextureView view = (TextureView)mSurface;
             if(view.getSurfaceTexture() != null){
                 view.getSurfaceTexture().setDefaultBufferSize(windowWidth, windowHeight);
+                // Zink's swapchain keeps the old size (a fold freezes the picture); rebuild it on the next swap.
+                if (resized && mNativeSurface != null) JREUtils.setupBridgeWindow(mNativeSurface);
             }
         }
         if (sdlEnabled) SDLActivity.getSDLSurface().nativeResize(windowWidth, windowHeight);

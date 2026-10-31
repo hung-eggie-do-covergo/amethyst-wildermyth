@@ -64,6 +64,7 @@ import net.kdt.pojavlaunch.customcontrols.keyboard.LwjglCharSender;
 import net.kdt.pojavlaunch.customcontrols.keyboard.TouchCharInput;
 import net.kdt.pojavlaunch.customcontrols.mouse.GyroControl;
 import net.kdt.pojavlaunch.customcontrols.mouse.HotbarView;
+import net.kdt.pojavlaunch.customcontrols.mouse.InGUIEventProcessor;
 import net.kdt.pojavlaunch.customcontrols.mouse.Touchpad;
 import net.kdt.pojavlaunch.lifecycle.ContextExecutor;
 import net.kdt.pojavlaunch.prefs.LauncherPreferences;
@@ -246,6 +247,7 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
             if (wildermyth) {
                 // Full resolution: the UI is text-heavy, and the second screen enlarges its glyphs further.
                 LauncherPreferences.PREF_SCALE_FACTOR = 1f;
+                InGUIEventProcessor.sWildermyth = true;
                 // Wildermyth asks GLFW for a 4.5 core context; only Zink provides one here.
                 Tools.LOCAL_RENDERER = "opengles3_desktopgl_zink_kopper";
                 isInputStackCall = true;

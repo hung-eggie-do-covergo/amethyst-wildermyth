@@ -13,6 +13,11 @@ import org.lwjgl.glfw.CallbackBridge;
 public class InGUIEventProcessor implements TouchEventProcessor {
     public static final float FINGER_SCROLL_THRESHOLD = Tools.dpToPx(6);
     public static final float FINGER_STILL_THRESHOLD = Tools.dpToPx(5);
+    // Wildermyth: two fingers pan (middle drag) and pinch zooms (wheel), a long press right-clicks.
+    public static boolean sWildermyth;
+    // The game zooms 5% per wheel notch, so a notch per 5% of finger spread tracks the fingers.
+    private static final double PINCH_NOTCH = Math.log(1.05);
+    private static final long LONG_PRESS_MS = 500;
 
     private final PointerTracker mTracker = new PointerTracker();
     private final TapDetector mSingleTapDetector;
@@ -20,6 +25,8 @@ public class InGUIEventProcessor implements TouchEventProcessor {
     private boolean mIsMouseDown = false;
     private float mStartX, mStartY;
     private final Scroller mScroller = new Scroller(FINGER_SCROLL_THRESHOLD);
+    private boolean mTwoFinger, mMiddleDown;
+    private float mPinchSpan;
 
     public InGUIEventProcessor() {
         mSingleTapDetector = new TapDetector(1, TapDetector.DETECTION_METHOD_BOTH);
@@ -27,6 +34,7 @@ public class InGUIEventProcessor implements TouchEventProcessor {
 
     @Override
     public boolean processTouchEvent(MotionEvent motionEvent) {
+        if (sWildermyth && twoFingers(motionEvent)) return true;
         boolean singleTap = mSingleTapDetector.onTouchEvent(motionEvent);
 
         switch (motionEvent.getActionMasked()) {
@@ -70,6 +78,9 @@ public class InGUIEventProcessor implements TouchEventProcessor {
                 // Handle single tap on gestures
                 if((!LauncherPreferences.PREF_DISABLE_GESTURES || touchpadDisplayed()) && !mIsMouseDown && singleTap) {
                     CallbackBridge.putMouseEventWithCoords(LwjglGlfwKeycode.GLFW_MOUSE_BUTTON_LEFT, CallbackBridge.mouseX, CallbackBridge.mouseY);
+                } else if (sWildermyth && !mIsMouseDown && !touchpadDisplayed()
+                        && motionEvent.getEventTime() - motionEvent.getDownTime() >= LONG_PRESS_MS) {
+                    CallbackBridge.putMouseEventWithCoords(LwjglGlfwKeycode.GLFW_MOUSE_BUTTON_RIGHT, CallbackBridge.mouseX, CallbackBridge.mouseY);
                 }
 
                 if(mIsMouseDown) disableMouse();
@@ -78,6 +89,48 @@ public class InGUIEventProcessor implements TouchEventProcessor {
 
 
         return true;
+    }
+
+    /** Takes the gesture once a second finger lands, until every finger lifts; true while it owns the event. */
+    private boolean twoFingers(MotionEvent e) {
+        int action = e.getActionMasked();
+        if (!mTwoFinger) {
+            if (action != MotionEvent.ACTION_POINTER_DOWN || touchpadDisplayed()) return false;
+            if (mIsMouseDown) disableMouse();
+            mTwoFinger = true;
+            mPinchSpan = Math.max(span(e), 1);
+            sendCentroid(e);
+            CallbackBridge.sendMouseButton(LwjglGlfwKeycode.GLFW_MOUSE_BUTTON_MIDDLE, true);
+            mMiddleDown = true;
+            return true;
+        }
+        if (action == MotionEvent.ACTION_MOVE && mMiddleDown && e.getPointerCount() >= 2) {
+            sendCentroid(e);
+            float span = Math.max(span(e), 1);
+            int notches = (int) (Math.log(span / mPinchSpan) / PINCH_NOTCH);
+            if (notches != 0) {
+                CallbackBridge.sendScroll(0, notches);
+                mPinchSpan *= (float) Math.pow(1.05, notches);
+            }
+        } else if (action == MotionEvent.ACTION_POINTER_UP || action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+            // One finger left is not a new drag: the gesture ends with the last finger.
+            if (mMiddleDown) CallbackBridge.sendMouseButton(LwjglGlfwKeycode.GLFW_MOUSE_BUTTON_MIDDLE, false);
+            mMiddleDown = false;
+            if (action != MotionEvent.ACTION_POINTER_UP) {
+                mTwoFinger = false;
+                mTracker.cancelTracking();
+                resetGesture();
+            }
+        }
+        return true;
+    }
+
+    private void sendCentroid(MotionEvent e) {
+        sendTouchCoordinates((e.getX(0) + e.getX(1)) / 2, (e.getY(0) + e.getY(1)) / 2);
+    }
+
+    private static float span(MotionEvent e) {
+        return (float) Math.hypot(e.getX(0) - e.getX(1), e.getY(0) - e.getY(1));
     }
 
     private boolean touchpadDisplayed() {
@@ -119,5 +172,7 @@ public class InGUIEventProcessor implements TouchEventProcessor {
     public void cancelPendingActions() {
         mScroller.resetScrollOvershoot();
         disableMouse();
+        if (mMiddleDown) CallbackBridge.sendMouseButton(LwjglGlfwKeycode.GLFW_MOUSE_BUTTON_MIDDLE, false);
+        mMiddleDown = mTwoFinger = false;
     }
 }
