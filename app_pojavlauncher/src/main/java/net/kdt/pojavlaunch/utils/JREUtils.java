@@ -290,7 +290,7 @@ public class JREUtils {
             }
         }
 
-        if(info.isAdreno() && !PREF_ZINK_PREFER_SYSTEM_DRIVER) {
+        if(info.isAdreno() && !info.isAdreno8xx() && !PREF_ZINK_PREFER_SYSTEM_DRIVER) {
             envMap.put("POJAV_LOAD_TURNIP", "1");
         }
 

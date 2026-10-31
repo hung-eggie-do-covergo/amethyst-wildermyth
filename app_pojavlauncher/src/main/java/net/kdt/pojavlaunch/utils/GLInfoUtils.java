@@ -163,5 +163,10 @@ public class GLInfoUtils {
         public boolean isAdreno() {
             return renderer.contains("Adreno") && vendor.equals("Qualcomm");
         }
+
+        /** Adreno 8xx (Snapdragon 8 Elite Gen 5 on) is newer than the bundled Turnip, which fails to open it. */
+        public boolean isAdreno8xx() {
+            return isAdreno() && renderer.matches(".*Adreno \\(TM\\) 8\\d\\d.*");
+        }
     }
 }
