@@ -86,6 +86,7 @@ public class WildermythActivity extends AppCompatActivity {
         prefs = getSharedPreferences("wildermyth", MODE_PRIVATE);
         game = WildermythLauncher.gameDir(this);
         WmCloud.configure(new File(getFilesDir(), "wmcloud"), line -> runOnUiThread(() -> status.setText(line)));
+        markAsGame();
 
         buildUi();
         hideSystemBars();
@@ -101,6 +102,16 @@ public class WildermythActivity extends AppCompatActivity {
         checkForUpdate();
         if (debuggable && getIntent().getBooleanExtra(EXTRA_PREVIEW, false)) { testing = true; preview(getIntent().getStringExtra(EXTRA_PREVIEW_SCREEN)); return; }
         if (!prefs.getBoolean(PREF_SESSION, false)) next();
+    }
+
+    /** Samsung's Game Booster reads the installer's category hint, not the manifest; after an in-app update we are the installer. */
+    private void markAsGame() {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) return;
+        try {
+            getPackageManager().setApplicationCategoryHint(getPackageName(), android.content.pm.ApplicationInfo.CATEGORY_GAME);
+        } catch (SecurityException ignored) {
+            // installed by something else (adb, a file manager): only that installer may set it
+        }
     }
 
     /** In the background, so play never waits on GitHub; a find shows on the Settings link. */

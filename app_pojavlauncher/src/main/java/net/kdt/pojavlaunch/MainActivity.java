@@ -248,6 +248,8 @@ public class MainActivity extends BaseActivity implements ControlButtonMenuListe
                 // Full resolution: the UI is text-heavy, and the second screen enlarges its glyphs further.
                 LauncherPreferences.PREF_SCALE_FACTOR = 1f;
                 InGUIEventProcessor.sWildermyth = true;
+                // Draw under a short-edge camera cutout (the Fold's cover screen).
+                LauncherPreferences.PREF_IGNORE_NOTCH = true;
                 // Wildermyth asks GLFW for a 4.5 core context; only Zink provides one here.
                 Tools.LOCAL_RENDERER = "opengles3_desktopgl_zink_kopper";
                 isInputStackCall = true;
